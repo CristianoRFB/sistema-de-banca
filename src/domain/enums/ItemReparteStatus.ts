@@ -1,0 +1,12 @@
+export const ItemReparteStatus = {
+  DISPONIVEL: "DISPONIVEL",
+  RESERVADO: "RESERVADO",
+  ESGOTADO: "ESGOTADO",
+  BLOQUEADO_PARA_RECOLHIMENTO: "BLOQUEADO_PARA_RECOLHIMENTO",
+  AGUARDANDO_RECOLHIMENTO: "AGUARDANDO_RECOLHIMENTO",
+  DEVOLVIDO: "DEVOLVIDO",
+  ARQUIVADO: "ARQUIVADO",
+} as const;
+
+export type ItemReparteStatus =
+  (typeof ItemReparteStatus)[keyof typeof ItemReparteStatus];

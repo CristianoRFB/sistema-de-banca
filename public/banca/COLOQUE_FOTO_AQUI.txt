@@ -1,0 +1,1 @@
+Adicionar a foto oficial escolhida pelo desenvolvedor nesta pasta (sugestão: foto.webp). Não implementar upload de foto na V1.

@@ -1,0 +1,111 @@
+REGRAS DE NEGÓCIO — SISTEMA DE BANCA
+=====================================
+
+1. ESCOPO
+- Sistema mobile-first/PWA. Desktop existe, mas não dita UX.
+- Não é ERP fiscal/caixa/contabilidade.
+- Núcleo: catálogo + reservas + reparte/consignação + retirada + recolhimento/devolução + históricos.
+
+2. PRODUTOS
+- Tipos: MANGA, REVISTA, BOX, COLECIONAVEL, OUTRO.
+- Box é produto normal na V1; composição interna é futura/opcional.
+- Produto e histórico não são apagados por rotina. Use ativo/status/arquivado.
+- Volume deve poder ser string para preservar "01", "09" etc.
+- Nome japonês/inglês/original são opcionais e não devem ser traduzidos automaticamente.
+
+3. LANDING / CATÁLOGO
+- Home: identidade, busca compacta, "Acabou de chegar", CTA Catálogo, últimas unidades, localização/horário.
+- Navegação mobile: Início, Catálogo, Reservas, Perfil.
+- Clicar em produto de novidades abre diretamente produto/reserva; "Ver todos" abre catálogo filtrado.
+- Cards devem ficar bonitos sem capas; imagem é opcional.
+- Feed de novidades é derivado de publicadoEm/entrada do reparte, sem trabalho manual.
+
+4. CLIENTE / PERFIL
+- Cliente não precisa de e-mail, senha, foto ou SMS/OTP obrigatório.
+- Dados: nome + telefone.
+- Busca de identidade: por nome, escopo da banca; exibir telefone mascarado; não permitir enumeração de telefones.
+- Após identificação segura, salvar sessão do dispositivo para reduzir atrito.
+- Perfil: editar nome/telefone, reservas, histórico, notificações, sair do dispositivo.
+
+5. RESERVA
+- Uma Reserva pode ter vários ItemReserva.
+- Estado é por item quando necessário para retirada parcial.
+- Data rápida: amanhã, +3 dias, +7 dias; calendário personalizado.
+- Máximo absoluto: 9 dias após criação, salvo limite menor imposto pelo reparte/recolhimento.
+- Não permitir dia/horário fora do funcionamento da banca.
+- Horário de retirada é opcional e aproximado.
+- Data de expiração é diferente de data pretendida de retirada.
+- Prazo mostrado ao cliente em formato humano: "2 dias e 6 horas", "expira amanhã", "hoje às 18h".
+- Desistência do cliente cancela/libera sem aprovação do admin.
+- "Vou buscar"/"Estou indo" expressam intenção; NÃO concluem venda/retirada.
+- Retirada só é confirmada pelo admin, ou pelo admin diretamente no balcão.
+- Reserva expirada não é apagada; fica como histórico e libera quantidade.
+
+6. LEMBRETES
+- Lembrete intermediário aproximadamente na metade do período reservado.
+- Lembrete no dia da retirada considerando horário de abertura.
+- Se horário aproximado foi informado, lembrete próximo a ele; evitar spam duplicado.
+- Aproximadamente 2h antes do fechamento: perguntar se vai buscar/alterar/desistir se ainda pendente.
+- Aproximadamente 30min antes do fechamento: admin recebe lista das retiradas pendentes do dia e confirma quem retirou/não veio.
+- Alterar data invalida/recalcula lembretes antigos.
+- Jobs devem ser idempotentes: registrar quais lembretes foram processados.
+
+7. BANCA
+- Perfil mais completo: nome de exibição, telefone, endereço, horários e configurações.
+- Foto da banca é fixa no código/public; sem upload na V1.
+- Horários inicialmente: Seg-Sex 08-18; Sáb 08-13; Dom fechado. Deve ser editável.
+
+8. LISTAS / IMPORTAÇÃO
+- Estados mínimos: RASCUNHO, PUBLICADA, ENCERRADA, ARQUIVADA.
+- Importar por foto, PDF, Excel/CSV, texto/manual.
+- Foto: processar localmente. Preferir OpenCV + OCR tabular; Tesseract.js é engine inicial, substituível.
+- A tabela pode conter título, volume, preço, quantidade, código, editora, nome original e data de recolhimento.
+- Não tratar OCR como verdade: sempre gerar RASCUNHO e tela de revisão.
+- Destacar baixa confiança/linhas suspeitas.
+- Autosave de rascunho.
+- Preview antes de publicar.
+- Lista publicada continua editável com histórico e validações (ex.: quantidade não pode ficar abaixo de reservas/retiradas existentes).
+- Não excluir item com reservas ativas; permitir ocultar novas reservas quando necessário.
+
+9. EXPORTAÇÃO / WHATSAPP
+- Gerar JPG, PDF e XLSX no navegador a partir dos dados; manter visual próximo à tabela recebida, mas padronizado.
+- Gerar texto de divulgação automaticamente.
+- Web Share API pode compartilhar arquivo/texto; usuário escolhe o grupo/destino. Não prometer envio silencioso a grupo específico.
+- Não guardar exportações permanentemente.
+
+10. REPARTE / CONSIGNAÇÃO
+- Produto != ItemReparte. ItemReparte representa uma quantidade daquele produto em um lote/remessa.
+- Guardar quantidade recebida, reservada, retirada e devolvida; disponibilidade é derivada.
+- Data de recolhimento pertence ao reparte/item de reparte, não ao produto permanente.
+- Margem de segurança padrão sugerida: 2 dias ANTES do recolhimento; editável pela banca/lote.
+- Ao atingir fim de novas reservas: bloquear novas reservas.
+- Na data de recolhimento: retirar item do catálogo/novas reservas e marcar aguardando conferência/devolução; NÃO marcar devolvido automaticamente.
+
+11. RECOLHIMENTO / DIVERGÊNCIAS
+- Sistema mostra quantidade esperada na banca; admin informa quantidade encontrada/devolvida.
+- Se encontrado > esperado: permitir ajuste positivo com motivo ou vincular a outro lote.
+- Se encontrado < esperado: oferecer motivos (venda não registrada, retirada, perda/avaria, erro, manter pendente).
+- Nunca bloquear a realidade física só porque o banco diverge.
+- Ajustes geram MovimentacaoEstoque auditável; não reescrever histórico silenciosamente.
+- Confirmar recolhimento registra devoluções e permite encerrar lote quando reconciliado.
+- Notificar admin sobre recolhimentos próximos (ex.: 7 dias, 2 dias e no dia), evitando duplicidade.
+
+12. HISTÓRICOS
+- Três visões: vendas/retiradas, devoluções, alterações.
+- Preço de venda deve ser snapshot no momento da retirada; alteração futura de preço não muda histórico.
+- Histórico de alterações registra antes/depois, ator e data quando relevante.
+
+13. FIREBASE / CUSTO
+- Firestore como banco; Auth real para admin. Cliente mantém UX simples e deve ter acesso tecnicamente seguro.
+- Não usar Firebase Storage na V1.
+- Não armazenar fotos originais de OCR, JPG/PDF/XLSX gerados ou arquivos temporários.
+- Preferir consultas paginadas/filtradas; evitar listeners globais e leituras N+1.
+- Dados textuais históricos podem permanecer por longo prazo.
+- Operações críticas devem ser atômicas/transacionais.
+
+14. PRIVACIDADE / SEGURANÇA
+- Nome e telefone são dados pessoais; coletar apenas o necessário.
+- Telefone não é chave primária. IDs internos imutáveis.
+- Telefone completo só onde necessário para cliente dono do perfil/admin; busca pública usa máscara.
+- Firestore rules não podem permitir escrita pública arbitrária.
+- Segredos/service accounts nunca no frontend/repositório.

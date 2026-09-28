@@ -1,0 +1,47 @@
+import { apiBaseUrl } from '../../app/config';
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+type ApiErrorEnvelope = { error: { message?: string; code?: string } };
+
+function hasApiError(payload: unknown): payload is ApiErrorEnvelope {
+  if (typeof payload !== 'object' || payload === null || !('error' in payload)) return false;
+  const error = payload.error;
+  return typeof error === 'object' && error !== null;
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await fetch(`${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`, {
+    ...init,
+    headers,
+    credentials: 'omit',
+  });
+
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new ApiError(
+      hasApiError(payload) && typeof payload.error.message === 'string' ? payload.error.message : 'Não foi possível concluir a solicitação.',
+      response.status,
+      hasApiError(payload) && typeof payload.error.code === 'string' ? payload.error.code : undefined,
+    );
+  }
+  if (typeof payload !== 'object' || payload === null || !('data' in payload)) throw new ApiError('Resposta inválida do serviço.', response.status);
+  return payload.data as T;
+}
+
+export const jsonBody = (value: unknown): Pick<RequestInit, 'body' | 'method'> => ({
+  method: 'POST',
+  body: JSON.stringify(value),
+});

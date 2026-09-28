@@ -1,0 +1,174 @@
+ESTRUTURA DO SISTEMA — FONTE DE REFERÊNCIA
+==========================================
+
+OBJETIVO
+Sistema PWA mobile-first para catálogo, reservas e operação de uma banca que recebe produtos em reparte/consignação, vende/retira parte e devolve o encalhe. O dono deve interagir o mínimo possível; importação, revisão, publicação, divulgação, lembretes e recolhimento devem ser guiados.
+
+PRINCÍPIO DE CAMADAS
+UI/PAGES -> FEATURES/SERVICES -> DOMAIN RULES -> REPOSITORIES -> INFRA/FIREBASE/BROWSER.
+Não acessar Firestore diretamente em componentes React.
+
+ÁRVORE PRINCIPAL
+banca-ana-maria/
+├── AGENTS.md                         instruções globais para Codex/agentes
+├── agents/                           papéis sugeridos de subagentes
+├── docs/
+│   ├── diagramas/                    diagramas canônicos do domínio/arquitetura
+│   ├── estrutura-original/           especificações iniciais congeladas
+│   ├── CONTEXTO_ATUAL.md             memória operacional; atualizar durante trabalho
+│   ├── DECISOES.md                   ADR simplificado
+│   └── PENDENCIAS.md                 bloqueios que exigem intervenção humana
+├── public/
+│   ├── banca/                        foto/logo estáticos definidos pelo desenvolvedor
+│   └── icons/                        ícones PWA
+├── src/
+│   ├── app/                          bootstrap, rotas, providers e config global
+│   ├── pages/                        composição de páginas; pouca regra de negócio
+│   ├── features/                     funcionalidades por domínio de uso
+│   ├── domain/                       entidades, enums, schemas e regras puras
+│   ├── infra/                        Firebase/browser/share/armazenamento local
+│   ├── components/                   UI reutilizável sem regra específica de domínio
+│   ├── hooks/                        hooks compartilhados
+│   ├── utils/                        utilitários genéricos
+│   ├── constants/                    constantes estáveis
+│   ├── styles/                       tokens/globais
+│   └── types/                        tipos globais estritamente necessários
+├── cloudflare/worker/                jobs agendados/backend mínimo se necessário
+├── tests/                            unit, integration, firestore e e2e
+├── scripts/                          seeds/validação/desenvolvimento
+├── firestore.rules                  segurança Firestore; baseline seguro
+├── firestore.indexes.json           índices compostos
+├── firebase.json                    config Firestore do projeto
+├── .firebaserc                       aponta para banca-88851
+├── .env.example                     configuração Web pública do Firebase
+├── vite.config.ts
+├── tsconfig.json
+├── package.json
+└── README.md
+
+PASTAS E ARQUIVOS DE CÓDIGO
+----------------------------
+src/app/
+- App.tsx: raiz visual/roteamento.
+- routes.tsx: rotas públicas, cliente e admin.
+- providers.tsx: providers globais (query/cache/theme/session etc.).
+- config.ts: configuração da aplicação que não é segredo.
+- bootstrap.ts: inicialização/guards globais.
+
+src/pages/public/
+- HomePage.tsx: landing da banca; busca compacta, novidades, últimas unidades, localização.
+- CatalogoPage.tsx: busca completa/filtros/ordenação.
+- ProdutoPage.tsx: detalhe e entrada no fluxo de reserva.
+- LocalizacaoPage.tsx: informações/rota se for necessária página dedicada.
+
+src/pages/cliente/
+- PerfilClientePage.tsx: nome/telefone editáveis, sem foto.
+- MinhasReservasPage.tsx: ativas/histórico e prazo visível.
+- ReservaDetalhesPage.tsx: intenção de retirada, reagendamento, desistência.
+- NotificacoesClientePage.tsx: caixa de notificações.
+
+src/pages/admin/
+- LoginAdminPage.tsx: autenticação real do responsável.
+- DashboardPage.tsx: retiradas do dia, recolhimentos próximos, listas, alertas.
+- ListasPage.tsx: rascunhos/publicadas/encerradas/arquivadas.
+- NovaListaPage.tsx: entrada foto/PDF/Excel/texto/manual.
+- RevisarListaPage.tsx: tabela interna de conferência OCR/importação.
+- ListaDetalhesPage.tsx: edição, prévia, publicar, exportar, histórico.
+- ReservasPage.tsx: busca/filtros/administração.
+- RetiradasHojePage.tsx: confirmação em lote e intenção dos clientes.
+- RecolhimentosPage.tsx: próximos/concluídos.
+- ConferirRecolhimentoPage.tsx: conciliação física e divergências.
+- HistoricoPage.tsx: vendas, devoluções, alterações.
+- PerfilBancaPage.tsx: nome/telefone/endereço/horários; foto é estática no build.
+- ConfiguracoesPage.tsx: margens/tolerâncias e preferências operacionais.
+
+src/features/landing/
+- componentes para hero/identidade, feed automático de "acabou de chegar", últimas unidades, busca rápida e localização.
+
+src/features/catalogo/
+- cards tipográficos (devem funcionar sem capa), busca, filtros e detalhe.
+- imagem de produto é opcional e nunca requisito para publicação.
+
+src/features/cliente/
+- busca de perfil por nome; resultado com telefone mascarado; confirmação por telefone informado; sessão simples no dispositivo.
+
+src/features/reservas/
+- fluxo de reservar; data rápida (amanhã/3 dias/7 dias) + calendário; teto 9 dias e limite do recolhimento.
+- horário aproximado opcional.
+- cronômetro/prazo humano: dias/horas, sem contador agressivo de segundos.
+- intenção: SEM_RESPOSTA, VOU_BUSCAR, ESTOU_INDO, NAO_VOU; retirada só é confirmada pelo admin.
+
+src/features/listas/
+- rascunho + autosave + revisão + preview + publicação.
+- edição posterior com histórico; não apagar produto reservado.
+
+src/features/importacao/
+- ocr/: engine abstrato, Tesseract inicial, pré-processamento OpenCV, detecção de tabela.
+- excel/: parser de planilha/CSV.
+- pdf/: extrair texto quando existir; OCR quando escaneado.
+- parser/: normalização e reconstrução de colunas/linhas.
+
+src/features/repartes/
+- lote/consignação, datas de recebimento/recolhimento, status e quantidade.
+
+src/features/recolhimentos/
+- lista o saldo esperado, permite contagem real, devolução e resolução de divergências.
+
+src/features/estoque/
+- movimentações imutáveis/auditáveis: entrada, reserva, cancelamento, retirada, devolução, ajustes, perda.
+
+src/features/notificacoes/
+- notificações in-app, push se possível, regras de lembrete e integração com jobs.
+
+src/features/historico/
+- vendas, devoluções e alterações; histórico não é apagado por rotina.
+
+src/features/exportacao/
+- gerar JPG/PDF/XLSX localmente a partir da lista estruturada.
+- gerar mensagem pronta e usar Web Share API; fallback para download + WhatsApp.
+
+src/features/banca/
+- perfil e horários; foto não é uploadável na V1.
+
+src/domain/entities/
+- Banca, Cliente, Produto, Lista, ItemLista, Reparte, ItemReparte, Reserva, ItemReserva, Recolhimento, ItemRecolhimento, DivergenciaRecolhimento, MovimentacaoEstoque, Notificacao, HorarioFuncionamento.
+
+src/domain/enums/
+- estados/tipos canônicos; evitar strings livres espalhadas.
+
+src/domain/schemas/
+- validação de entrada (ex.: Zod) antes de gravar dados importados/formulários.
+
+src/domain/rules/
+- funções puras: disponibilidade, expiração, fim de reservas, data/horário, recolhimento, divergências.
+
+src/infra/firebase/
+- firebase.ts: initializeApp.
+- firestore.ts: db/configuração comum.
+- auth.ts: identidade/admin e estratégia segura de sessão.
+- transactions/: operações atômicas críticas.
+- converters/: FirestoreDataConverter quando útil.
+- repositories/: implementações concretas dos contratos de dados.
+
+src/infra/browser/
+- APIs do navegador: Web Share, File/Canvas, permissões etc.
+
+src/infra/local-storage/
+- sessão/dispositivo e preferências não sensíveis.
+
+cloudflare/worker/
+- backend mínimo e jobs agendados caso necessários para lembretes/expirações/recolhimentos.
+- segredos ficam em secrets/variáveis do Cloudflare, nunca no Git.
+
+TESTES CRÍTICOS
+- concorrência na última unidade;
+- expiração/liberação;
+- limite de 9 dias e data de recolhimento;
+- retirada parcial;
+- cancelamento/desistência;
+- alteração de quantidade com reservas existentes;
+- recolhimento esperado vs encontrado e ajustes;
+- rules do Firestore;
+- importação com linhas imperfeitas;
+- responsividade mobile;
+- build PWA.

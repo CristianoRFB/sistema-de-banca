@@ -1,0 +1,31 @@
+name = "sistema-de-banca-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-28"
+
+[vars]
+FIREBASE_PROJECT_ID = "banca-88851"
+BANCA_ID = "PREENCHER_ID_DO_DOCUMENTO_BANCAS"
+CORS_ORIGINS = "https://SEU_DOMINIO_FINAL"
+
+[[ratelimits]]
+name = "CLIENT_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+  [observability.logs]
+  enabled = true
+  head_sampling_rate = 1
+
+  [observability.traces]
+  enabled = true
+  head_sampling_rate = 0.05

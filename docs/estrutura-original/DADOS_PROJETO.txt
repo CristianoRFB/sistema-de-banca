@@ -1,0 +1,28 @@
+DADOS DO PROJETO / INFRAESTRUTURA
+=================================
+
+Repositório oficial GitHub:
+https://github.com/CristianoRFB/sistema-de-banca
+
+Firebase oficial:
+projectId: banca-88851
+authDomain: banca-88851.firebaseapp.com
+storageBucket presente na configuração padrão: banca-88851.firebasestorage.app
+IMPORTANTE: não usar Firebase Storage como dependência da V1.
+
+Configuração Web fornecida:
+apiKey: AIzaSyCCqkmV15xLWZlfgLVSr7kGCuCjEj0vd4s
+messagingSenderId: 347692182041
+appId: 1:347692182041:web:7fe26af53754efc6729888
+
+A configuração Web do Firebase não deve ser confundida com segredo de servidor. NUNCA colocar service account, private key ou tokens privados no repositório.
+
+Cloudflare:
+- deploy alvo via Cloudflare conectado ao GitHub;
+- conta que o usuário pretende deixar aberta: nexus7devstudio@gmail.com;
+- frontend: build Vite (`npm run build`) -> `dist`;
+- automações agendadas podem usar Worker/Cron se necessário, mantendo secrets fora do Git.
+
+Objetivo operacional:
+- manter custo recorrente de infraestrutura próximo de zero e dentro das cotas gratuitas no uso esperado;
+- evitar serviços pagos por OCR, Storage ou processamento por requisição quando a função puder rodar no navegador.

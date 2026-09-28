@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // All browser data access is proxied through the authenticated Cloudflare Worker.
+    // The Worker uses server credentials and must enforce the matching banca/session checks.
+    // Keep client SDK access closed so a browser cannot enumerate or mutate private records.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

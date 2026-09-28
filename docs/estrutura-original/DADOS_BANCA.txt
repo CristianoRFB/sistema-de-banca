@@ -1,0 +1,46 @@
+DADOS INICIAIS — BANCA ANA MARIA
+================================
+
+Nome de exibição: Banca Ana Maria
+Cidade: Santa Fé do Sul - SP
+Endereço conhecido: R. Sete, Santa Fé do Sul - SP, CEP 15775-000
+Telefone / WhatsApp: +55 17 99153-6969
+Instagram: NÃO confirmado; não utilizar.
+
+Horários inicialmente conhecidos pelo cadastro do Google:
+- Segunda: 08:00-18:00
+- Terça: 08:00-18:00
+- Quarta: 08:00-18:00
+- Quinta: 08:00-18:00
+- Sexta: 08:00-18:00
+- Sábado: 08:00-13:00
+- Domingo: fechado
+
+A banca deve poder editar horários no painel. Não codificar horários como regra eterna.
+
+Foto da banca:
+- será definida manualmente pelo desenvolvedor;
+- arquivo estático em `public/banca/`;
+- sem upload pelo admin na V1.
+
+Fluxo manual atual observado:
+1. banca recebe relação/lista de lançamentos;
+2. publica títulos e volumes em grupo/WhatsApp;
+3. mensagem orienta clientes a chamar no privado para dúvidas/reservas;
+4. controle de reserva é manual.
+
+Exemplo real fornecido pela banca (24/08):
+- Agentes das Estações 01
+- Wistoria 09
+- Romantic Killer 01
+- O paraíso Ilusório 13
+- Os filhos da Família Shiunji 08
+- Mushoku Tensei 24
+- Tamon's B-Side 04
+- Centuria 01
+- On/Off 03
+- Wind Breaker 25
+- Colégio Ouran 01
+- Century Boys 09
+
+Observação: volume deve aceitar/preservar zeros à esquerda ("01", "09").

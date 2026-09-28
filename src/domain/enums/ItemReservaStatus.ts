@@ -1,0 +1,12 @@
+export const ItemReservaStatus = {
+  RESERVADO: "RESERVADO",
+  PARCIALMENTE_RETIRADO: "PARCIALMENTE_RETIRADO",
+  RETIRADA_INFORMADA: "RETIRADA_INFORMADA",
+  RETIRADO: "RETIRADO",
+  CANCELADO_CLIENTE: "CANCELADO_CLIENTE",
+  CANCELADO_BANCA: "CANCELADO_BANCA",
+  EXPIRADO: "EXPIRADO",
+} as const;
+
+export type ItemReservaStatus =
+  (typeof ItemReservaStatus)[keyof typeof ItemReservaStatus];

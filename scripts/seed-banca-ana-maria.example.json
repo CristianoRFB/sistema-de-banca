@@ -1,0 +1,57 @@
+{
+  "banca": {
+    "nomeExibicao": "Banca Ana Maria",
+    "telefone": "+5517991536969",
+    "cidade": "Santa Fé do Sul - SP"
+  },
+  "produtosExemplo": [
+    {
+      "titulo": "Agentes das Estações",
+      "volume": "01"
+    },
+    {
+      "titulo": "Wistoria",
+      "volume": "09"
+    },
+    {
+      "titulo": "Romantic Killer",
+      "volume": "01"
+    },
+    {
+      "titulo": "O paraíso Ilusório",
+      "volume": "13"
+    },
+    {
+      "titulo": "Os filhos da Família Shiunji",
+      "volume": "08"
+    },
+    {
+      "titulo": "Mushoku Tensei",
+      "volume": "24"
+    },
+    {
+      "titulo": "Tamon's B-Side",
+      "volume": "04"
+    },
+    {
+      "titulo": "Centuria",
+      "volume": "01"
+    },
+    {
+      "titulo": "On/Off",
+      "volume": "03"
+    },
+    {
+      "titulo": "Wind Breaker",
+      "volume": "25"
+    },
+    {
+      "titulo": "Colégio Ouran",
+      "volume": "01"
+    },
+    {
+      "titulo": "Century Boys",
+      "volume": "09"
+    }
+  ]
+}

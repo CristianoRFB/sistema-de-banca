@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Banca Ana Maria",
+  "short_name": "Ana Maria",
+  "description": "Catálogo e reservas da Banca Ana Maria, em Santa Fé do Sul.",
+  "start_url": "/",
+  "display": "standalone",
+  "scope": "/",
+  "background_color": "#f5f3ec",
+  "theme_color": "#b8ed57",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

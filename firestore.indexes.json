@@ -1,0 +1,219 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" },
+        { "fieldPath": "nomeNormalizado", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" },
+        { "fieldPath": "publicadoEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" },
+        { "fieldPath": "tituloExibicao", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" },
+        { "fieldPath": "availabilityClass", "order": "ASCENDING" },
+        { "fieldPath": "publicadoEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" },
+        { "fieldPath": "availabilityClass", "order": "ASCENDING" },
+        { "fieldPath": "tituloExibicao", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "itemReparteId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "listaId", "order": "ASCENDING" },
+        { "fieldPath": "ordem", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensLista",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "listaId", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "clienteId", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataRetiradaPretendida", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "expiraEm", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "listas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "listas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "repartes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataRecolhimentoPrevista", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "repartes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "dataRecolhimentoPrevista", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "itensReparte",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "reparteId", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "clienteId", "order": "ASCENDING" },
+        { "fieldPath": "destinatarioTipo", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "reservaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "historicoVendas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "confirmadaEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "historicoDevolucoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "historicoAlteracoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

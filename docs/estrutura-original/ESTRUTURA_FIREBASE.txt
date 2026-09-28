@@ -1,0 +1,249 @@
+ESTRUTURA FIREBASE / FIRESTORE — REFERÊNCIA CANÔNICA
+================================================
+
+OBJETIVOS
+- Firestore armazena dados estruturados e históricos.
+- Firebase Authentication protege administrador; cliente mantém UX sem cadastro tradicional.
+- Firebase Storage NÃO é requisito da V1.
+- Dados históricos usam status/arquivamento em vez de DELETE rotineiro.
+- Operações críticas devem manter invariantes de quantidade e concorrência.
+
+COLEÇÕES
+
+bancas/{bancaId}
+  nomeExibicao: string
+  slug: string
+  telefone: string
+  endereco: object|string
+  fotoFixaUrl: string
+  margemRecolhimentoDias: number
+  toleranciaRetiradaDias: number
+  ativo: boolean
+  criadoEm/atualizadoEm: timestamp
+
+bancas/{bancaId}/horarios/{diaId}
+  diaSemana: number|string
+  fechado: boolean
+  abre: string|null       # HH:mm
+  fecha: string|null      # HH:mm
+
+bancas/{bancaId}/usuarios/{uid}
+  uid: string
+  papel: ADMIN|OPERADOR
+  ativo: boolean
+
+clientes/{clienteId}
+  bancaId: string
+  nome: string
+  nomeNormalizado: string
+  telefone: string
+  telefoneNormalizado: string
+  telefoneFinal: string
+  criadoEm/atualizadoEm: timestamp
+  ativo: boolean
+
+sessoesClientes/{sessaoId}
+  clienteId: string
+  bancaId: string
+  tokenHash ou identificador técnico seguro
+  criadoEm: timestamp
+  ultimoAcesso: timestamp
+  ativa: boolean
+OBS: estratégia concreta deve respeitar Firestore rules. Não permitir que um visitante arbitrário escreva como qualquer cliente.
+
+produtos/{produtoId}
+  codigo: string|null
+  titulo: string
+  tituloNormalizado: string
+  nomeOriginal: string|null
+  volume: string|null       # string para preservar 01/09
+  editora: string|null
+  tipo: MANGA|REVISTA|BOX|COLECIONAVEL|OUTRO
+  isbn: string|null
+  ativo: boolean
+  criadoEm/atualizadoEm: timestamp
+
+repartes/{reparteId}
+  bancaId: string
+  fornecedorId: string|null
+  titulo: string
+  dataRecebimento: timestamp|null
+  dataRecolhimentoPrevista: timestamp|null
+  dataFimReservas: timestamp|null
+  margemSegurancaDias: number
+  status: RASCUNHO|ATIVO|AGUARDANDO_RECOLHIMENTO|ENCERRADO|ARQUIVADO
+  criadaEm/publicadaEm/encerradaEm: timestamp|null
+
+itensReparte/{itemReparteId}
+  bancaId: string
+  reparteId: string
+  produtoId: string
+  tituloSnapshot: string
+  volumeSnapshot: string|null
+  precoVenda: number|null
+  quantidadeRecebida: number
+  quantidadeReservada: number
+  quantidadeRetirada: number
+  quantidadeDevolvida: number
+  dataRecolhimentoOverride: timestamp|null
+  status: string
+  publicadoEm: timestamp|null
+INVARIANTE: disponivel = recebida - reservada - retirada - devolvida >= 0.
+Se quantidadeDisponivel for materializada por performance, atualizar na mesma transação e tratá-la como derivada.
+
+listas/{listaId}
+  bancaId: string
+  reparteId: string|null
+  titulo: string
+  slug: string
+  status: RASCUNHO|PUBLICADA|ENCERRADA|ARQUIVADA
+  criadaEm/publicadaEm/encerradaEm: timestamp|null
+  versao: number
+
+itensLista/{itemListaId}
+  listaId: string
+  bancaId: string
+  itemReparteId: string
+  produtoId: string
+  ordem: number
+  tituloExibicao: string
+  precoExibicao: number|null
+  ativo: boolean
+
+reservas/{reservaId}
+  bancaId: string
+  clienteId: string
+  clienteNomeSnapshot: string
+  clienteTelefoneFinal: string
+  criadaEm: timestamp
+  dataRetiradaPretendida: timestamp/date
+  horarioAproximado: string|null
+  expiraEm: timestamp
+  status: ATIVA|PARCIALMENTE_RETIRADA|CONCLUIDA|CANCELADA|EXPIRADA
+  intencaoRetirada: SEM_RESPOSTA|VOU_BUSCAR|ESTOU_INDO|NAO_VOU
+  lembreteMeioEnviado: boolean
+  lembreteDiaEnviado: boolean
+  lembreteFechamentoEnviado: boolean
+  atualizadaEm: timestamp
+
+itensReserva/{itemReservaId}
+  reservaId: string
+  bancaId: string
+  itemReparteId: string
+  produtoId: string
+  quantidade: number
+  precoUnitarioSnapshot: number|null
+  status: RESERVADO|RETIRADA_INFORMADA|RETIRADO|CANCELADO_CLIENTE|CANCELADO_BANCA|EXPIRADO
+
+movimentacoesEstoque/{movimentacaoId}
+  bancaId: string
+  itemReparteId: string
+  itemReservaId: string|null
+  tipo: ENTRADA_REPARTE|RESERVA|CANCELAMENTO|RETIRADA|DEVOLUCAO|AJUSTE_POSITIVO|AJUSTE_NEGATIVO|PERDA
+  quantidade: number
+  saldoAntes: number|null
+  saldoDepois: number|null
+  motivo: string|null
+  criadoEm: timestamp
+  usuarioId: string|null
+
+recolhimentos/{recolhimentoId}
+  bancaId: string
+  reparteId: string
+  dataPrevista: timestamp
+  iniciadoEm: timestamp|null
+  confirmadoEm: timestamp|null
+  status: PENDENTE|EM_CONFERENCIA|COM_DIVERGENCIA|CONFIRMADO|ENCERRADO
+  observacoes: string|null
+
+itensRecolhimento/{itemRecolhimentoId}
+  recolhimentoId: string
+  itemReparteId: string
+  produtoId: string
+  quantidadeEsperada: number
+  quantidadeEncontrada: number|null
+  quantidadeDevolvida: number|null
+  divergente: boolean
+  observacao: string|null
+
+divergencias/{divergenciaId}
+  bancaId: string
+  recolhimentoId: string
+  itemReparteId: string
+  tipo: SOBRA|FALTA|LOTE_DIFERENTE|NAO_CADASTRADO|OUTRO
+  esperado: number
+  encontrado: number
+  resolucao: string|null
+  resolvida: boolean
+  criadaEm/resolvidaEm: timestamp|null
+
+notificacoes/{notificacaoId}
+  bancaId: string
+  clienteId: string|null
+  reservaId: string|null
+  destinatarioTipo: CLIENTE|ADMIN
+  tipo: string
+  titulo: string
+  mensagem: string
+  agendadaPara: timestamp|null
+  enviadaEm: timestamp|null
+  lida: boolean
+  status: PENDENTE|ENVIADA|FALHOU|CANCELADA
+
+historicoVendas/{vendaId}
+  bancaId, reservaId, itemReservaId, clienteId, produtoId, itemReparteId
+  quantidade, precoUnitarioSnapshot, totalSnapshot
+  confirmadaEm, confirmadoPor
+
+historicoDevolucoes/{devolucaoId}
+  bancaId, recolhimentoId, reparteId, itemReparteId, produtoId
+  quantidade, data, confirmadoPor
+
+historicoAlteracoes/{alteracaoId}
+  bancaId
+  entidadeTipo, entidadeId
+  campo|null
+  antes|null, depois|null
+  tipo
+  usuarioId|null
+  criadoEm
+
+importacoes/{importacaoId}
+  bancaId
+  listaId|null, reparteId|null
+  origem: FOTO|PDF|EXCEL|CSV|TEXTO|MANUAL
+  totalLinhas, linhasComErro, status
+  criadaEm/concluidaEm
+  NUNCA guardar a foto/documento original permanentemente apenas para OCR.
+
+REGRAS DE SEGURANÇA / IMPLEMENTAÇÃO
+1. Baseline deve ser deny-by-default até as regras reais estarem implementadas/testadas.
+2. Admin autenticado só acessa/modifica a banca autorizada.
+3. Público pode ler apenas dados publicados necessários ao catálogo e perfil público da banca.
+4. Público não pode listar clientes, sessões, movimentações, históricos administrativos ou telefones completos.
+5. Cliente não pode alterar arbitrariamente clienteId/reservaId de outra pessoa. A estratégia técnica deve ser segura mesmo que a UX não exija senha/OTP.
+6. Reserva da última unidade deve usar transação/controle de concorrência.
+7. Confirmar retirada deve atualizar ItemReserva/Reserva, quantidades, movimentação e histórico de forma atômica ou compensável.
+8. Cancelar/expirar deve liberar quantidade de forma atômica e idempotente.
+9. Confirmar recolhimento/ajustes deve preservar saldo >= 0 e gerar movimentações.
+10. Não armazenar service accounts, private keys ou secrets no frontend/Git.
+
+GUARDRAILS DE CUSTO
+- Sem Firebase Storage na V1.
+- Evitar snapshots/listeners globais em coleções grandes.
+- Paginar histórico e catálogo; limitar queries.
+- Evitar N+1 reads; usar snapshots/desnormalização controlada quando reduzir leituras.
+- Não criar um documento gigante com toda a lista; itens separados.
+- Não armazenar binários/exportações/arquivos OCR no Firestore.
+- Índices apenas para consultas reais; revisar `firestore.indexes.json`.
+- Jobs agendados devem consultar janelas relevantes e ser idempotentes, não varrer o banco inteiro sem filtro.
+
+ÍNDICES PROVÁVEIS (validar conforme queries reais)
+- itensReparte: bancaId + status + publicadoEm desc
+- itensReparte: bancaId + reparteId + status
+- listas: bancaId + status + publicadaEm desc
+- reservas: bancaId + status + dataRetiradaPretendida
+- reservas: clienteId + status + criadaEm desc
+- notificacoes: destinatarioTipo + status + agendadaPara
+- recolhimentos: bancaId + status + dataPrevista
+- historico*: bancaId + data/confirmadaEm desc
