@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clienteRepository } from "../../src/features/cliente/cliente.repository";
 import { reservaRepository } from "../../src/features/reservas/reserva.repository";
+import { apiRequest, isUsingCachedPublicData } from "../../src/infra/browser/api-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -57,5 +58,20 @@ describe("client API response contracts", () => {
       intencaoRetirada: "ESTOU_INDO",
       itens: [{ titulo: "Wistoria", volume: "09", quantidade: 1 }],
     });
+  });
+
+  it("tracks a cached public response until a fresh public response arrives", async () => {
+    const payload = JSON.stringify({ data: { items: [] } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(payload, {
+      status: 200,
+      headers: { "x-public-data-cache": "fallback" },
+    })));
+
+    await apiRequest("/public/catalog");
+    expect(isUsingCachedPublicData()).toBe(true);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(payload, { status: 200 })));
+    await apiRequest("/public/catalog");
+    expect(isUsingCachedPublicData()).toBe(false);
   });
 });

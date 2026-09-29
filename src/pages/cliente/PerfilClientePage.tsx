@@ -14,6 +14,8 @@ export function PerfilClientePage() {
   const [name, setName] = useState(session?.nome ?? '');
   const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
   const [error, setError] = useState('');
   const toast = useToast();
   const navigate = useNavigate();
@@ -29,6 +31,17 @@ export function PerfilClientePage() {
     finally { setSaving(false); }
   }
 
+  async function logout() {
+    if (!session || loggingOut) return;
+    setLoggingOut(true); setLogoutError('');
+    try {
+      await clienteRepository.logout(session.token);
+      removerSessaoCliente(); setSession(null); setEditing(false);
+    } catch {
+      setLogoutError('Não foi possível encerrar a sessão agora. Verifique a conexão e tente novamente.');
+    } finally { setLoggingOut(false); }
+  }
+
   return (
     <div className="customer-page page-wrap">
       <div className="page-kicker"><span className="eyebrow">04 · SUA IDENTIDADE</span><span className="page-count">PERFIL / CLIENTE</span></div>
@@ -38,7 +51,7 @@ export function PerfilClientePage() {
           {editing ? <div className="form-stack profile-edit"><label className="field-label">Nome<Input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Novo telefone com DDD<Input autoComplete="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="(17) 99999-0000" /></label><div className="button-row"><Button variant="ghost" onClick={() => setEditing(false)}>Cancelar</Button><Button disabled={saving} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar perfil'} <ArrowRight size={16} /></Button></div>{error && <p className="form-error" role="alert">{error}</p>}</div>
             : <div className="profile-links"><Link to="/cliente/reservas"><span>Minhas reservas</span><ArrowRight size={17} /></Link><Link to="/cliente/notificacoes"><span>Notificações</span><ArrowRight size={17} /></Link></div>}
         </section>}
-      {session && <button type="button" className="text-button signout-link" onClick={() => { removerSessaoCliente(); setSession(null); setEditing(false); }}>Sair deste dispositivo</button>}
+      {session && <><button type="button" className="text-button signout-link" disabled={loggingOut} onClick={() => void logout()}>{loggingOut ? 'Encerrando…' : 'Sair deste dispositivo'}</button>{logoutError && <p className="form-error" role="alert">{logoutError}</p>}</>}
     </div>
   );
 }

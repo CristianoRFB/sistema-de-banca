@@ -47,6 +47,9 @@ describe('admin reservation date filter', () => {
     expect(JSON.stringify(firestoreQuery)).toContain('PARCIALMENTE_RETIRADA');
     expect(body.data.reservations).toHaveLength(1);
     expect(body.data.page.nextCursor).toBeTruthy();
+    const itemQueries = queries.filter((entry) => entry.collection === 'itensReserva');
+    expect(itemQueries).toHaveLength(1);
+    expect(JSON.stringify(itemQueries[0].query)).toContain('"op":"IN"');
 
     const cursor = body.data.page.nextCursor;
     const nextQueries: Array<{ collection: string; query: Record<string, unknown> }> = [];

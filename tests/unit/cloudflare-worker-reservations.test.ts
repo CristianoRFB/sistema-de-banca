@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handleClientRoute } from "../../cloudflare/worker/src/routes/client";
 import { FirestoreRest, TransactionConflict } from "../../cloudflare/worker/src/firebase/firestore-rest";
-import { getClientIdentity, hashClientSessionToken, hashCustomerPhone, verifyClientSessionSignature } from "../../cloudflare/worker/src/security";
+import { getClientIdentity, hashClientSessionToken, hashCustomerPhone, isBrazilianPhone, normalizePhone, verifyClientSessionSignature } from "../../cloudflare/worker/src/security";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
 
 type StoredDocument = FirestoreDocument & { version: number };
@@ -26,6 +26,7 @@ const pepper = "unit-test-pepper-with-at-least-thirty-two-bytes";
  */
 class InMemoryFirestore extends FirestoreRest {
   readonly documents = new Map<string, StoredDocument>();
+  readonly queryCalls: string[] = [];
   private readonly versions = new Map<string, number>();
   private readonly collectionEpochs = new Map<string, number>();
   private readonly transactions = new Map<string, TransactionState>();
@@ -65,6 +66,7 @@ class InMemoryFirestore extends FirestoreRest {
   }
 
   override async query(collection: string, structuredQuery: JsonObject, transactionId?: string): Promise<FirestoreDocument[]> {
+    this.queryCalls.push(collection);
     const prefix = `${collection.replace(/^\/+|\/+$/g, "")}/`;
     const epochKey = collection.replace(/^\/+|\/+$/g, "");
     const immediateDocuments = [...this.documents.entries()]
@@ -166,6 +168,10 @@ class InMemoryFirestore extends FirestoreRest {
           : "integerValue" in encoded ? Number(encoded.integerValue)
             : "doubleValue" in encoded ? encoded.doubleValue
               : undefined;
+      if (filter.op === "IN") {
+        const values = ((encoded.arrayValue as JsonObject | undefined)?.values as JsonObject[] | undefined) ?? [];
+        return values.some((value) => data[field] === ("stringValue" in value ? value.stringValue : value));
+      }
       return data[field] === expected;
     });
   }
@@ -236,7 +242,7 @@ async function createRouteContext(
   const request = new Request(`https://banca.example.test${path}`, {
     method: options.method,
     headers,
-    body: JSON.stringify(options.body),
+    ...(["GET", "HEAD"].includes(options.method.toUpperCase()) ? {} : { body: JSON.stringify(options.body) }),
   });
   return { request, url: new URL(request.url), env, db, corsOrigin: null };
 }
@@ -297,7 +303,7 @@ async function invoke(ctx: RequestContext): Promise<{ status: number; payload: J
     return { status: response.status, payload: await response.json() as JsonObject };
   } catch (error) {
     if (!(error instanceof HttpError)) throw error;
-    return { status: error.status, payload: { error: { code: error.code } } };
+    return { status: error.status, payload: { error: { code: error.code, message: error.message } } };
   }
 }
 
@@ -420,9 +426,130 @@ describe("Cloudflare Worker reservation transactions", () => {
       authenticated: false,
     }));
 
-    expect(response.status).toBe(409);
-    expect((response.payload.error as JsonObject).code).toBe("profile_session_exists");
+    expect(response.status).toBe(404);
+    expect((response.payload.error as JsonObject).code).toBe("identity_not_found");
     expect([...db.documents.keys()].filter((path) => path.startsWith("sessoesClientes/")).sort()).toEqual([]);
+  });
+
+  it("normalizes national and country-code Brazilian numbers to one phone index", async () => {
+    const env = testEnv();
+    const db = new InMemoryFirestore(env);
+    db.seed(`bancas/${bankId}`, { ativo: true });
+
+    expect(normalizePhone("(17) 99999-1234")).toBe("5517999991234");
+    expect(normalizePhone("+55 17 99999-1234")).toBe("5517999991234");
+    expect(normalizePhone("00 55 17 99999-1234")).toBe("5517999991234");
+    expect(isBrazilianPhone("5517999991234")).toBe(true);
+    expect(isBrazilianPhone("55179999123456")).toBe(false);
+
+    const created = await invoke(await createRouteContext(db, "/api/client/sessions", {
+      method: "POST", body: { name: "Ana Maria", phone: "(17) 99999-1234" }, key: "canonical-phone-0001", authenticated: false,
+    }));
+    expect(created.status).toBe(201);
+    const duplicate = await invoke(await createRouteContext(db, "/api/client/sessions", {
+      method: "POST", body: { name: "Outra pessoa", phone: "+55 17 99999-1234" }, key: "canonical-phone-0002", authenticated: false,
+    }));
+    expect(duplicate.status).toBe(404);
+    expect([...db.documents.keys()].filter((path) => path.startsWith("clientes/")).length).toBe(1);
+    expect([...db.documents.keys()].filter((path) => path.startsWith("indiceTelefonesClientes/")).length).toBe(1);
+  });
+
+  it("returns the same session error for a linked phone with matching or nonmatching name", async () => {
+    const env = testEnv();
+    const db = new InMemoryFirestore(env);
+    const nationalPhone = "1799991234";
+    const phoneHash = await hashCustomerPhone(env, nationalPhone);
+    db.seed(`bancas/${bankId}`, { ativo: true });
+    db.seed(`clientes/existing-client`, { bancaId: bankId, ativo: true, nomeNormalizado: "ana maria", telefone: nationalPhone });
+    db.seed(`indiceTelefonesClientes/${phoneHash}`, { bancaId: bankId, clienteId: "existing-client" });
+
+    const wrongName = await invoke(await createRouteContext(db, "/api/client/sessions", {
+      method: "POST", body: { name: "Outra pessoa", phone: "+55 17 9999-1234" }, key: "same-error-0001", authenticated: false,
+    }));
+    const matchingName = await invoke(await createRouteContext(db, "/api/client/sessions", {
+      method: "POST", body: { name: "Ana Maria", phone: "+55 17 9999-1234" }, key: "same-error-0002", authenticated: false,
+    }));
+    expect(wrongName).toEqual({
+      status: 404,
+      payload: { error: { code: "identity_not_found", message: "No profile matched those details." } },
+    });
+    expect(matchingName).toEqual(wrongName);
+  });
+
+  it("migrates a legacy national-number index to the canonical key on profile update", async () => {
+    const db = new InMemoryFirestore(testEnv());
+    const context = await createRouteContext(db, "/api/client/profile", {
+      method: "PATCH", body: { name: "Ana Maria", phone: "+55 (17) 9999-1234" }, key: "phone-migration-0001",
+    });
+    const legacyHash = await hashCustomerPhone(context.env, "1799991234");
+    const canonicalHash = await hashCustomerPhone(context.env, "551799991234");
+    db.seed(`indiceTelefonesClientes/${legacyHash}`, { bancaId: bankId, clienteId: clientId });
+
+    const response = await invoke(context);
+
+    expect(response.status).toBe(200);
+    expect(db.documents.has(`indiceTelefonesClientes/${legacyHash}`)).toBe(false);
+    expect(db.documents.get(`indiceTelefonesClientes/${canonicalHash}`)?.data.clienteId).toBe(clientId);
+    expect(db.documents.get(`clientes/${clientId}`)?.data.telefone).toBe("551799991234");
+  });
+
+  it("revokes the client session server-side on logout", async () => {
+    const db = new InMemoryFirestore(testEnv());
+    const context = await createRouteContext(db, "/api/client/sessions/logout", {
+      method: "POST", body: {}, key: "logout-session-0001",
+    });
+    const sessionId = await hashClientSessionToken(context.env, clientToken);
+    const response = await invoke(context);
+    expect(response.status).toBe(200);
+    expect(db.documents.get(`sessoesClientes/${sessionId}`)?.data).toMatchObject({ ativa: false });
+    expect(typeof db.documents.get(`sessoesClientes/${sessionId}`)?.data.revogadaEm).toBe("string");
+
+    const profile = await invoke(await createRouteContext(db, "/api/client/profile", {
+      method: "GET", body: {}, key: "logout-profile-0001",
+    }));
+    expect(profile.status).toBe(401);
+    expect((profile.payload.error as JsonObject).code).toBe("session_invalid");
+  });
+
+  it("rate-limits each authenticated customer read and loads a reservations page with one item query", async () => {
+    const db = new InMemoryFirestore(testEnv());
+    const paths = ["/api/client/profile", "/api/client/reservations", "/api/client/notifications"];
+    for (const path of paths) {
+      const context = await createRouteContext(db, path, { method: "GET", body: {}, key: `read-limit-${path.split("/").at(-1)}-01` });
+      const rateLimitKeys: string[] = [];
+      context.env.CLIENT_RATE_LIMITER = { limit: async ({ key }) => { rateLimitKeys.push(key); return { success: true }; } };
+      const result = await invoke(context);
+      expect(result.status).toBe(200);
+      expect(rateLimitKeys).toHaveLength(1);
+    }
+    const blockedContext = await createRouteContext(db, "/api/client/profile", { method: "GET", body: {}, key: "read-limit-block-01" });
+    blockedContext.env.CLIENT_RATE_LIMITER = { limit: async () => ({ success: false }) };
+    expect((await invoke(blockedContext)).status).toBe(429);
+
+    for (let index = 1; index <= 3; index += 1) {
+      const reservationId = `reservation-${index}`;
+      db.seed(`reservas/${reservationId}`, {
+        bancaId: bankId, clienteId: clientId, status: "ATIVA", criadaEm: new Date(Date.now() - index * 1000).toISOString(),
+        dataRetiradaPretendida: "2026-10-01T12:00:00.000Z", expiraEm: "2026-10-02T12:00:00.000Z",
+      });
+      db.seed(`itensReserva/item-${index}`, {
+        bancaId: bankId, reservaId: reservationId, itemReparteId: `stock-${index}`, tituloSnapshot: `Item ${index}`,
+        quantidade: 1, quantidadeOriginal: 1, status: "RESERVADO",
+      });
+    }
+    db.seed("itensReserva/foreign-item", {
+      bancaId: "another-bank", reservaId: "reservation-1", itemReparteId: "foreign-stock", tituloSnapshot: "Not visible",
+      quantidade: 1, quantidadeOriginal: 1, status: "RESERVADO",
+    });
+    db.queryCalls.length = 0;
+    const listing = await invoke(await createRouteContext(db, "/api/client/reservations", {
+      method: "GET", body: {}, key: "reservations-page-0001",
+    }));
+    expect(listing.status).toBe(200);
+    const reservations = (listing.payload.data as JsonObject).reservations as JsonObject[];
+    expect(reservations).toHaveLength(3);
+    expect(reservations[0].items).toHaveLength(1);
+    expect(db.queryCalls.filter((collection) => collection === "itensReserva")).toHaveLength(1);
   });
 
   it("renews a valid client session before expiry and verifies scoped cursor HMACs", async () => {

@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowUpRight, CalendarDays, MapPin, Share2 } from 'lucide-re
 import { Link, useParams } from 'react-router-dom';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { ApiError } from '../../infra/browser/api-client';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
 import { ReservarProdutoSheet } from '../../features/reservas/components/ReservarProdutoSheet';
 import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
@@ -11,26 +12,36 @@ import { BANCA } from '../../app/config';
 export function ProdutoPage() {
   const { itemReparteId = '' } = useParams();
   const [product, setProduct] = useState<ProdutoCatalogo | null>(null);
-  const [loadedFor, setLoadedFor] = useState('');
+  const [loadState, setLoadState] = useState<'ready' | 'not-found' | 'failure'>('ready');
+  const [retry, setRetry] = useState(0);
   const [demo, setDemo] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
+  const requestKey = `${itemReparteId}:${retry}`;
+  const [loadedRequestKey, setLoadedRequestKey] = useState('');
 
   useEffect(() => {
     let active = true;
     catalogoRepository.get(itemReparteId).then((value) => {
-      if (active) { setProduct(value); setDemo(false); setLoadedFor(itemReparteId); }
-    }).catch(async () => {
+      if (active) { setProduct(value); setDemo(false); setLoadState('ready'); setLoadedRequestKey(requestKey); }
+    }).catch(async (cause: unknown) => {
       if (import.meta.env.DEV) {
         const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
         const sample = demoCatalogo.find((item) => itemReparteId === item.itemReparteId);
-        if (active) { setProduct(sample ?? null); setDemo(!!sample); setLoadedFor(itemReparteId); }
-      } else if (active) { setProduct(null); setLoadedFor(itemReparteId); }
+        if (!active) return;
+        if (sample) { setProduct(sample); setDemo(true); setLoadState('ready'); }
+        else setLoadState(cause instanceof ApiError && cause.status === 404 ? 'not-found' : 'failure');
+        setLoadedRequestKey(requestKey);
+      } else if (active) {
+        setLoadState(cause instanceof ApiError && cause.status === 404 ? 'not-found' : 'failure');
+        setLoadedRequestKey(requestKey);
+      }
     });
     return () => { active = false; };
-  }, [itemReparteId]);
+  }, [itemReparteId, requestKey]);
 
-  if (loadedFor !== itemReparteId) return <div className="page-wrap loading-block">Abrindo a ficha do título <span className="loading-dots">···</span></div>;
-  if (!product) return <div className="page-wrap empty-state"><span className="eyebrow">TÍTULO NÃO ENCONTRADO</span><h1>Essa página saiu<br />da prateleira.</h1><Link className="button button--dark" to="/catalogo"><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
+  if (loadedRequestKey !== requestKey) return <div className="page-wrap loading-block" role="status" aria-live="polite">Abrindo a ficha do título <span className="loading-dots">···</span></div>;
+  if (loadState === 'not-found') return <div className="page-wrap empty-state"><span className="eyebrow">TÍTULO NÃO ENCONTRADO</span><h1>Essa página saiu<br />da prateleira.</h1><Link className="button button--dark" to="/catalogo"><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
+  if (loadState === 'failure' || !product) return <div className="page-wrap empty-state" role="alert"><span className="eyebrow">CATÁLOGO INDISPONÍVEL</span><h1>Não foi possível abrir este título.</h1><p>Confira sua conexão e tente novamente.</p><Button variant="secondary" type="button" onClick={() => setRetry((attempt) => attempt + 1)}>Tentar novamente</Button><Link className="back-link" to="/catalogo"><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
 
   const available = product.quantidadeDisponivel !== null && product.quantidadeDisponivel > 0;
   const price = product.preco == null ? 'Consulte na banca' : product.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

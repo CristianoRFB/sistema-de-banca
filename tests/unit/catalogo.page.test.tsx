@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { PaginaCatalogo, ProdutoCatalogo } from '../../src/features/catalogo/catalogo.types';
@@ -26,7 +26,9 @@ function product(id: string, title: string): ProdutoCatalogo {
 }
 
 afterEach(() => {
+  cleanup();
   listMock.mockReset();
+  vi.unstubAllEnvs();
 });
 
 describe('página de catálogo', () => {
@@ -49,5 +51,28 @@ describe('página de catálogo', () => {
       ordenar: 'RECENTES',
     }, 'cursor-2');
     expect(screen.queryByRole('button', { name: 'Carregar mais títulos' })).not.toBeInTheDocument();
+  });
+
+  it('oferece retry após falha inicial e anuncia o filtro selecionado', async () => {
+    vi.stubEnv('DEV', false);
+    listMock.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({
+      itens: [product('1', 'Wistoria')],
+      proximoCursor: null,
+      temMais: false,
+    });
+
+    render(<MemoryRouter initialEntries={['/catalogo']}>
+      <Routes><Route path="/catalogo" element={<CatalogoPage />} /></Routes>
+    </MemoryRouter>);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível carregar o catálogo.');
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByText('Wistoria')).toBeInTheDocument();
+
+    const mangaFilter = screen.getByRole('button', { name: 'Mangá' });
+    expect(mangaFilter).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(mangaFilter);
+    expect(mangaFilter).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(3));
   });
 });

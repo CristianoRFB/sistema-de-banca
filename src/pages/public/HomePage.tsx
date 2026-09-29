@@ -3,7 +3,11 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, MapPin, Search, Sparkles } fr
 import { Link, useNavigate } from 'react-router-dom';
 import { BANCA } from '../../app/config';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import type { HorarioFuncionamento } from '../../domain/entities/HorarioFuncionamento';
+import { validarHorarioBanca } from '../../domain/rules/validarHorarioBanca';
+import { obterPerfilPublicoBanca } from '../../features/banca/banca.service';
 import { ProdutoCardTipografico } from '../../features/catalogo/components/ProdutoCardTipografico';
 import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
@@ -13,7 +17,12 @@ export function HomePage() {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<ProdutoCatalogo[]>([]);
   const [lowStockItems, setLowStockItems] = useState<ProdutoCatalogo[]>([]);
-  const [source, setSource] = useState<'live' | 'demo' | 'empty'>('empty');
+  const [source, setSource] = useState<'live' | 'demo' | 'failure'>('failure');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  const [loadedCatalogAttempt, setLoadedCatalogAttempt] = useState(-1);
+  const [hours, setHours] = useState<HorarioFuncionamento[] | null>(null);
+  const [hoursState, setHoursState] = useState<'loading' | 'ready' | 'failure'>('loading');
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     let active = true;
@@ -23,11 +32,34 @@ export function HomePage() {
     return () => { active = false; };
   }, []);
 
-  const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const isOpen = now.getDay() >= 1 && now.getDay() <= 5
-    ? minutes >= 480 && minutes < 1080
-    : now.getDay() === 6 && minutes >= 480 && minutes < 780;
+  useEffect(() => {
+    let active = true;
+    obterPerfilPublicoBanca().then((profile) => {
+      if (active) { setHours(profile.horarios); setHoursState('ready'); }
+    }).catch(() => {
+      if (active) { setHours(null); setHoursState('failure'); }
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const currentDayConfigured = hours?.some((entry) => entry.diaSemana === now.getDay()) ?? false;
+  const currentSchedule = hours && currentDayConfigured ? validarHorarioBanca(now, hours) : null;
+  const scheduleIssue = currentSchedule && !currentSchedule.ok ? currentSchedule.issues[0]?.code : null;
+  const openStatus = hoursState !== 'ready' || !currentSchedule
+    ? 'unknown'
+    : currentSchedule.ok
+      ? 'open'
+      : scheduleIssue === 'BANCA_FECHADA' || scheduleIssue === 'FORA_DO_EXPEDIENTE'
+        ? 'closed'
+        : 'unknown';
+
+  const catalogLoading = loadedCatalogAttempt !== catalogAttempt;
+  const visibleSource = catalogLoading ? 'loading' : source;
 
   useEffect(() => {
     let active = true;
@@ -35,17 +67,19 @@ export function HomePage() {
       if (!active) return;
       setItems(page.itens);
       setSource('live');
+      setLoadedCatalogAttempt(catalogAttempt);
     }).catch(async () => {
       if (import.meta.env.DEV && active) {
         const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
-        if (active) { setItems(demoCatalogo.slice(0, 6)); setSource('demo'); }
+        if (active) { setItems(demoCatalogo.slice(0, 6)); setSource('demo'); setLoadedCatalogAttempt(catalogAttempt); }
       } else if (active) {
         setItems([]);
-        setSource('empty');
+        setSource('failure');
+        setLoadedCatalogAttempt(catalogAttempt);
       }
     });
     return () => { active = false; };
-  }, []);
+  }, [catalogAttempt]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -92,7 +126,7 @@ export function HomePage() {
         <div className="product-grid">{lowStockItems.map((item, index) => <ProdutoCardTipografico key={item.itemReparteId} produto={item} index={index} />)}</div>
       </section>}
 
-      {source === 'demo' && <div className="demo-ribbon"><span>Prévia de desenvolvimento</span> Amostras sem preço e sem estoque publicado. Nenhuma reserva pode ser feita por elas.</div>}
+      {visibleSource === 'demo' && <div className="demo-ribbon"><span>Prévia de desenvolvimento</span> Amostras sem preço e sem estoque publicado. Nenhuma reserva pode ser feita por elas.</div>}
 
       <section className="content-section new-arrivals" aria-labelledby="new-arrivals-title">
         <div className="section-heading">
@@ -102,7 +136,11 @@ export function HomePage() {
           </div>
           <Link className="section-link" to="/catalogo">Ver catálogo completo <ArrowRight size={17} /></Link>
         </div>
-        {items.length ? (
+        {visibleSource === 'loading' ? (
+          <div className="empty-catalog" role="status" aria-live="polite"><span className="empty-catalog__number" aria-hidden="true">…</span><div><h3>Carregando as novidades.</h3><p>Buscando os títulos publicados pela banca.</p></div></div>
+        ) : visibleSource === 'failure' ? (
+          <div className="empty-catalog" role="alert"><span className="empty-catalog__number" aria-hidden="true">!</span><div><h3>Não foi possível carregar o catálogo.</h3><p>Confira sua conexão e tente novamente.</p></div><Button variant="secondary" type="button" onClick={() => setCatalogAttempt((attempt) => attempt + 1)}>Tentar novamente</Button></div>
+        ) : items.length ? (
           <div className="product-grid product-grid--featured">
             {items.map((item, index) => <ProdutoCardTipografico key={item.itemReparteId} produto={item} index={index} />)}
           </div>
@@ -123,7 +161,7 @@ export function HomePage() {
       </section>
 
       <section className="visit-section">
-        <div className="visit-section__label"><span className="eyebrow">04 · APAREÇA</span><Badge tone={isOpen ? 'lime' : 'muted'}>{isOpen ? 'Aberta agora' : 'Fechada agora'}</Badge></div>
+        <div className="visit-section__label"><span className="eyebrow">04 · APAREÇA</span><Badge tone={openStatus === 'open' ? 'lime' : 'muted'}>{openStatus === 'open' ? 'Aberta agora' : openStatus === 'closed' ? 'Fechada agora' : hoursState === 'loading' ? 'Consultando horários' : 'Horário indisponível'}</Badge></div>
         <div className="visit-section__body"><h2>Seu ponto<br />de parada.</h2><p>Um lugar para encontrar o próximo volume, trocar indicações e descobrir o que acabou de chegar.</p><Link className="button button--dark" to="/localizacao">Endereço e horários <ArrowRight size={17} /></Link></div>
         <div className="visit-section__address"><MapPin size={19} /><span>{BANCA.address}</span></div>
       </section>

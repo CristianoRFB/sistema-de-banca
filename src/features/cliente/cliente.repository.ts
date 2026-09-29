@@ -17,6 +17,13 @@ export const clienteRepository = {
     return { token: result.sessionToken, clienteId: result.profile.id, nome: result.profile.name };
   },
 
+  async logout(token: string): Promise<void> {
+    await apiRequest<{ revoked: boolean }>('/client/sessions/logout', {
+      ...jsonBody({}),
+      headers: sessionHeaders(token),
+    });
+  },
+
   async getMyProfile(token: string): Promise<PerfilCliente> {
     const result = await apiRequest<{ profile: { clientId: string; name: string } }>('/client/profile', { headers: sessionHeaders(token) });
     return { clienteId: result.profile.clientId, nome: result.profile.name };

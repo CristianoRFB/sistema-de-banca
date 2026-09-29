@@ -19,6 +19,14 @@ function reservationItemsQuery(reservationId: string): JsonObject {
   return query("itensReserva", [eq("reservaId", firestoreString(reservationId))], 120, [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }]);
 }
 
+function reservationItemsQueryMany(reservationIds: string[]): JsonObject {
+  return query("itensReserva", [{
+    field: { fieldPath: "reservaId" },
+    op: "IN",
+    value: { arrayValue: { values: reservationIds.map((id) => firestoreString(id)) } },
+  }], 1000, [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }]);
+}
+
 function inventoryOnHand(data: JsonObject): number {
   return Number(data.quantidadeRecebida ?? 0) + Number(data.quantidadeAjustePositivo ?? 0) -
     Number(data.quantidadeRetirada ?? 0) - Number(data.quantidadeDevolvida ?? 0) - Number(data.quantidadeAjusteNegativo ?? 0);
@@ -105,11 +113,21 @@ export async function getAdminReservations(ctx: RequestContext): Promise<Respons
   const visible = documents.slice(0, limit);
   const clientIds = [...new Set(visible.map((item) => String(item.data.clienteId ?? "")).filter(Boolean))];
   const clients = await ctx.db.batchGet(clientIds.map((id) => `clientes/${id}`));
+  const itemsByReservation = new Map<string, FirestoreDocument[]>();
+  for (let offset = 0; offset < visible.length; offset += 30) {
+    const reservationIds = visible.slice(offset, offset + 30).map((reservation) => reservation.id);
+    if (!reservationIds.length) continue;
+    const items = await ctx.db.query("itensReserva", reservationItemsQueryMany(reservationIds));
+    for (const item of items) {
+      const reservationId = String(item.data.reservaId ?? "");
+      itemsByReservation.set(reservationId, [...(itemsByReservation.get(reservationId) ?? []), item]);
+    }
+  }
   const result = [];
   for (const reservation of visible) {
     const clientId = String(reservation.data.clienteId ?? "");
     const client = clients.get(`projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/clientes/${clientId}`);
-    const items = await ctx.db.query("itensReserva", reservationItemsQuery(reservation.id));
+    const items = itemsByReservation.get(reservation.id) ?? [];
     result.push({
       id: reservation.id,
       status: reservation.data.status,
@@ -280,8 +298,11 @@ async function withdrawReservation(ctx: RequestContext, user: AdminIdentity, res
         reservaId: reservationId,
         itemReservaId: original.id,
         clienteId: reservation.data.clienteId,
+        clienteNomeSnapshot: reservation.data.clienteNomeSnapshot ?? null,
         produtoId: original.data.produtoId,
         itemReparteId,
+        tituloSnapshot: original.data.tituloSnapshot ?? null,
+        volumeSnapshot: original.data.volumeSnapshot ?? null,
         quantidade: quantity,
         precoUnitarioSnapshot: price,
         totalSnapshot: price == null ? null : price * quantity,
@@ -309,17 +330,106 @@ async function withdrawReservation(ctx: RequestContext, user: AdminIdentity, res
   return jsonResponse(ctx, result);
 }
 
+export async function cancelReservationByAdmin(ctx: RequestContext, user: AdminIdentity, reservationId: string): Promise<Response> {
+  if (!validDocumentId(reservationId)) throw new HttpError({ code: "not_found", message: "Reservation not found.", status: 404 });
+  const body = await readJsonBody(ctx.request, 2_000);
+  const now = new Date().toISOString();
+  const result = await ctx.db.transact(async (transaction) => {
+    const idem = await prepareIdempotency(ctx, transaction, `reservation-cancel-admin:${user.uid}:${reservationId}`, body);
+    if (idem.replay !== undefined) return idem.replay as JsonObject;
+    const reservation = await transaction.get(`reservas/${reservationId}`);
+    if (!reservation || reservation.data.bancaId !== ctx.env.BANCA_ID || !["ATIVA", "PARCIALMENTE_RETIRADA"].includes(String(reservation.data.status))) {
+      throw new HttpError({ code: "reservation_unavailable", message: "This reservation cannot be cancelled.", status: 409 });
+    }
+    const items = await transaction.query("itensReserva", reservationItemsQuery(reservationId));
+    const activeItems = items.filter((item) => ACTIVE_ITEM_STATUSES.includes(String(item.data.status)));
+    if (!activeItems.length) throw new HttpError({ code: "reservation_item_unavailable", message: "This reservation has no remaining items to cancel.", status: 409 });
+    const inventories = new Map<string, FirestoreDocument>();
+    for (const item of activeItems) {
+      const itemReparteId = String(item.data.itemReparteId ?? "");
+      if (!inventories.has(itemReparteId)) {
+        const stock = await transaction.get(`itensReparte/${itemReparteId}`);
+        if (!stock || stock.data.bancaId !== ctx.env.BANCA_ID) throw new HttpError({ code: "inventory_invariant_failed", message: "Reservation stock record is missing.", status: 409 });
+        inventories.set(itemReparteId, stock);
+      }
+    }
+    const catalogRows = await catalogRowsForStocks(transaction, ctx.env, [...inventories.keys()]);
+    const updatedAvailability = new Map<string, number>();
+    let released = 0;
+    for (const item of activeItems) {
+      const itemReparteId = String(item.data.itemReparteId);
+      const stock = inventories.get(itemReparteId)!;
+      const quantity = Number(item.data.quantidade ?? 0);
+      const reserved = Number(stock.data.quantidadeReservada ?? 0);
+      if (!Number.isSafeInteger(quantity) || quantity <= 0 || reserved < quantity) {
+        throw new HttpError({ code: "inventory_invariant_failed", message: "Reservation stock balance is inconsistent.", status: 409 });
+      }
+      const updatedStock = { ...stock.data, quantidadeReservada: reserved - quantity, atualizadoEm: now };
+      assertInventoryValid(updatedStock);
+      transaction.set(`itensReparte/${itemReparteId}`, updatedStock);
+      transaction.set(`itensReserva/${item.id}`, { ...item.data, status: "CANCELADO_BANCA", canceladoEm: now, canceladoPor: user.uid });
+      const movementId = crypto.randomUUID();
+      transaction.set(`movimentacoesEstoque/${movementId}`, {
+        bancaId: ctx.env.BANCA_ID,
+        itemReparteId,
+        itemReservaId: item.id,
+        tipo: "CANCELAMENTO",
+        quantidade: quantity,
+        saldoAntes: reservationAvailability(stock.data),
+        saldoDepois: reservationAvailability(updatedStock),
+        motivo: "Cancelamento realizado pela banca",
+        criadoEm: now,
+        usuarioId: user.uid,
+      }, { mustNotExist: true });
+      inventories.set(itemReparteId, { ...stock, data: updatedStock });
+      updatedAvailability.set(itemReparteId, reservationAvailability(updatedStock));
+      released += quantity;
+    }
+    setCatalogAvailability(transaction, catalogRows, updatedAvailability, now);
+    const remaining = items.map((item) => activeItems.some((active) => active.id === item.id)
+      ? { ...item, data: { ...item.data, status: "CANCELADO_BANCA" } }
+      : item);
+    const hasOpen = remaining.some((item) => ACTIVE_ITEM_STATUSES.includes(String(item.data.status)) && Number(item.data.quantidade ?? 0) > 0);
+    const hasWithdrawn = remaining.some((item) => item.data.status === "RETIRADO");
+    const status = hasOpen ? "PARCIALMENTE_RETIRADA" : hasWithdrawn ? "CONCLUIDA" : "CANCELADA";
+    transaction.set(`reservas/${reservationId}`, { ...reservation.data, status, canceladaPelaBancaEm: now, canceladaPor: user.uid, atualizadaEm: now });
+    const historyId = crypto.randomUUID();
+    transaction.set(`historicoAlteracoes/${historyId}`, {
+      bancaId: ctx.env.BANCA_ID,
+      entidadeTipo: "RESERVA",
+      entidadeId: reservationId,
+      campo: "cancelamento",
+      antes: { status: reservation.data.status, itensAtivos: activeItems.length },
+      depois: { status, itensCancelados: activeItems.length, quantidadeLiberada: released },
+      tipo: "CANCELAMENTO_BANCA",
+      usuarioId: user.uid,
+      criadoEm: now,
+    }, { mustNotExist: true });
+    const response = { reservationId, status, releasedQuantity: released };
+    saveIdempotency(transaction, idem, response);
+    return response;
+  });
+  return jsonResponse(ctx, result);
+}
+
 async function listRepartes(ctx: RequestContext): Promise<Response> {
-  const status = ctx.url.searchParams.get("status")?.trim().toUpperCase();
+  const status = ctx.url.searchParams.get("status")?.trim().toUpperCase() ?? "ABERTOS";
   const allowed = new Set(["RASCUNHO", "ATIVO", "AGUARDANDO_RECOLHIMENTO", "ENCERRADO", "ARQUIVADO"]);
-  if (status && !allowed.has(status)) throw new HttpError({ code: "invalid_status", message: "status is invalid.", status: 400 });
+  if (status !== "ABERTOS" && status !== "TODOS" && !allowed.has(status)) throw new HttpError({ code: "invalid_status", message: "status is invalid.", status: 400 });
   const limit = parseLimit(ctx.url.searchParams.get("limit"), 30, 100);
   const filters = [eq("bancaId", firestoreString(ctx.env.BANCA_ID))];
-  if (status) filters.push(eq("status", firestoreString(status)));
-  const documents = await ctx.db.query("repartes", query("repartes", filters, limit, [{ field: { fieldPath: "dataRecolhimentoPrevista" }, direction: "ASCENDING" }]));
+  if (status === "ABERTOS") filters.push({ field: { fieldPath: "status" }, op: "IN", value: { arrayValue: { values: [firestoreString("ATIVO"), firestoreString("AGUARDANDO_RECOLHIMENTO")] } } });
+  else if (status !== "TODOS") filters.push(eq("status", firestoreString(status)));
+  const scope = `repartes:v1:${status}`;
+  const cursor = await readPageToken(ctx, ctx.url.searchParams.get("cursor"), scope);
+  const orderBy = [{ field: { fieldPath: "dataRecebimento" }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
+  const startAt = cursor ? { values: [firestoreString(cursor.sortValue), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/repartes/${cursor.id}` }], before: false } : undefined;
+  const documents = await ctx.db.query("repartes", query("repartes", filters, limit + 1, orderBy, startAt));
+  const visible = documents.slice(0, limit);
+  const last = visible.at(-1);
   return jsonResponse(ctx, {
-    repartes: documents.map((document) => ({ id: document.id, title: document.data.titulo, status: document.data.status, receivedAt: document.data.dataRecebimento, plannedCollectionAt: document.data.dataRecolhimentoPrevista, reservationCutoffAt: document.data.dataFimReservas })),
-    page: { limit, nextCursor: null },
+    repartes: visible.map((document) => ({ id: document.id, title: document.data.titulo, status: document.data.status, receivedAt: document.data.dataRecebimento, plannedCollectionAt: document.data.dataRecolhimentoPrevista, reservationCutoffAt: document.data.dataFimReservas })),
+    page: { limit, nextCursor: documents.length > limit && last ? await pageToken(ctx, scope, String(last.data.dataRecebimento ?? ""), last.id) : null },
   });
 }
 
@@ -370,9 +480,10 @@ async function getReconciliation(ctx: RequestContext, reparteId: string): Promis
       title: item.data.tituloSnapshot,
       volume: item.data.volumeSnapshot ?? null,
       quantityExpected: inventoryOnHand(item.data),
-      quantityFound: countedByItem.get(item.id)?.data.quantidadeEncontrada ?? null,
+      quantityFound: countedByItem.get(item.id)?.data.pendente === true ? null : countedByItem.get(item.id)?.data.quantidadeEncontrada ?? null,
       quantityReturned: countedByItem.get(item.id)?.data.quantidadeDevolvida ?? null,
-      resolution: countedByItem.get(item.id)?.data.resolucao ?? countedByItem.get(item.id)?.data.observacao ?? null,
+      resolution: countedByItem.get(item.id)?.data.pendente === true ? null : countedByItem.get(item.id)?.data.resolucao ?? countedByItem.get(item.id)?.data.observacao ?? null,
+      pending: countedByItem.get(item.id)?.data.pendente === true,
       reserved: Number(item.data.quantidadeReservada ?? 0),
       status: item.data.status,
     })),
@@ -405,7 +516,7 @@ function normalizeReconciliationItems(value: unknown): ReconciliationInput[] {
   });
 }
 
-async function reconcileReparte(ctx: RequestContext, user: AdminIdentity, reparteId: string): Promise<Response> {
+export async function reconcileReparte(ctx: RequestContext, user: AdminIdentity, reparteId: string): Promise<Response> {
   if (!validDocumentId(reparteId)) throw new HttpError({ code: "not_found", message: "Reparte not found.", status: 404 });
   const body = await readJsonBody(ctx.request, 20_000);
   const inputs = normalizeReconciliationItems(body.items);
@@ -423,58 +534,107 @@ async function reconcileReparte(ctx: RequestContext, user: AdminIdentity, repart
     const foundIds = new Set(inputs.map((item) => item.itemReparteId));
     if (inputs.length !== inventoryItems.length || inventoryItems.some((item) => !foundIds.has(item.id))) throw new HttpError({ code: "incomplete_reconciliation", message: "Count every item in the selected reparte before confirming reconciliation.", status: 400 });
     if (inventoryItems.some((item) => Number(item.data.quantidadeReservada ?? 0) > 0)) throw new HttpError({ code: "active_reservations", message: "Cancel or expire every active reservation before reconciling this reparte.", status: 409 });
-    const catalogRows = await catalogRowsForStocks(transaction, ctx.env, inventoryItems.map((item) => item.id));
+    const [catalogRows, existingCountRows, relatedLists] = await Promise.all([
+      catalogRowsForStocks(transaction, ctx.env, inventoryItems.map((item) => item.id)),
+      transaction.query("itensRecolhimento", query("itensRecolhimento", [eq("recolhimentoId", firestoreString(collectionId))], 100)),
+      transaction.query("listas", query("listas", [eq("reparteId", firestoreString(reparteId))], 100)),
+    ]);
+    const countByItem = new Map(existingCountRows.map((item) => [String(item.data.itemReparteId), item]));
+    const pendingDivergenceIds = [...new Set(existingCountRows.map((item) => String(item.data.divergenciaPendenteId ?? "")).filter(Boolean))];
+    const pendingDivergenceDocs = await Promise.all(pendingDivergenceIds.map((id) => transaction.get(`divergencias/${id}`)));
+    const pendingDivergences = new Map(pendingDivergenceIds.map((id, index) => [id, pendingDivergenceDocs[index]]));
 
     const divergenceIds: string[] = [];
     const updatedAvailability = new Map<string, number>();
+    let hasPendingDivergence = false;
     for (const input of inputs) {
       const item = inventoryItems.find((candidate) => candidate.id === input.itemReparteId)!;
+      const previousCount = countByItem.get(item.id);
       const expected = inventoryOnHand(item.data);
       if (!Number.isSafeInteger(expected) || expected < 0) throw new HttpError({ code: "inventory_invariant_failed", message: "Inventory balance is inconsistent.", status: 409 });
       const difference = input.quantityFound - expected;
+      const priorPendingId = String(previousCount?.data.divergenciaPendenteId ?? "") || null;
+      const priorPending = priorPendingId ? pendingDivergences.get(priorPendingId) : null;
+      if (priorPendingId && !priorPending) throw new HttpError({ code: "divergence_record_missing", message: "A pending divergence record is missing.", status: 409 });
       let adjustmentType: "AJUSTE_POSITIVO" | "AJUSTE_NEGATIVO" | null = null;
+      let remainsPending = false;
       if (difference > 0) {
         if (input.resolution !== "AJUSTE_POSITIVO" || !input.reason || input.reason.length < 4) throw new HttpError({ code: "resolution_required", message: "An increase requires resolution AJUSTE_POSITIVO and a reason.", status: 400 });
         adjustmentType = "AJUSTE_POSITIVO";
       } else if (difference < 0) {
-        if (!new Set(["PERDA", "VENDA_NAO_REGISTRADA", "ERRO_CONFERENCIA"]).has(String(input.resolution)) || !input.reason || input.reason.length < 4) throw new HttpError({ code: "resolution_required", message: "A shortage requires an explicit resolution and reason.", status: 400 });
-        adjustmentType = "AJUSTE_NEGATIVO";
+        const allowedShortageResolutions = new Set(["PERDA", "PERDA_OU_AVARIA", "VENDA_NAO_REGISTRADA", "RETIRADA_NAO_REGISTRADA", "ERRO_CONFERENCIA", "ERRO_DE_ESTOQUE", "OUTRO", "MANTER_PENDENTE"]);
+        if (!allowedShortageResolutions.has(String(input.resolution)) || !input.reason || input.reason.length < 4) throw new HttpError({ code: "resolution_required", message: "A shortage requires an explicit resolution and reason.", status: 400 });
+        remainsPending = input.resolution === "MANTER_PENDENTE";
+        if (!remainsPending) adjustmentType = "AJUSTE_NEGATIVO";
       }
       const updatedInventory: JsonObject = {
         ...item.data,
         quantidadeDevolvida: Number(item.data.quantidadeDevolvida ?? 0) + input.quantityFound,
         quantidadeAjustePositivo: Number(item.data.quantidadeAjustePositivo ?? 0) + Math.max(0, difference),
-        quantidadeAjusteNegativo: Number(item.data.quantidadeAjusteNegativo ?? 0) + Math.max(0, -difference),
-        status: "DEVOLVIDO",
+        quantidadeAjusteNegativo: Number(item.data.quantidadeAjusteNegativo ?? 0) + (difference < 0 && !remainsPending ? -difference : 0),
+        status: remainsPending ? "AGUARDANDO_RECOLHIMENTO" : "DEVOLVIDO",
         atualizadoEm: now,
       };
       assertInventoryValid(updatedInventory);
       transaction.set(`itensReparte/${item.id}`, updatedInventory);
       updatedAvailability.set(item.id, reservationAvailability(updatedInventory));
+
+      if (priorPending) {
+        transaction.set(`divergencias/${priorPendingId}`, {
+          ...priorPending.data,
+          resolvida: true,
+          resolvidaEm: now,
+          resolucao: `RECONTAGEM${input.reason ? `: ${input.reason}` : " confirmada"}`,
+        });
+      }
+      let currentPendingId: string | null = null;
+      if (difference !== 0) {
+        const divergenceId = crypto.randomUUID();
+        divergenceIds.push(divergenceId);
+        currentPendingId = remainsPending ? divergenceId : null;
+        transaction.set(`divergencias/${divergenceId}`, {
+          bancaId: ctx.env.BANCA_ID,
+          recolhimentoId: collectionId,
+          itemReparteId: item.id,
+          tipo: difference > 0 ? "SOBRA" : "FALTA",
+          esperado: expected,
+          encontrado: input.quantityFound,
+          resolucao: remainsPending ? null : `${input.resolution}: ${input.reason}`,
+          resolvida: !remainsPending,
+          criadaEm: now,
+          resolvidaEm: remainsPending ? null : now,
+        }, { mustNotExist: true });
+      }
+      if (remainsPending) hasPendingDivergence = true;
       transaction.set(`itensRecolhimento/${`${collectionId}-${item.id}`}`, {
         recolhimentoId: collectionId,
         itemReparteId: item.id,
         produtoId: item.data.produtoId ?? null,
-        quantidadeEsperada: expected,
+        quantidadeEsperada: previousCount?.data.quantidadeEsperada ?? expected,
+        quantidadeEsperadaNaContagem: expected,
         quantidadeEncontrada: input.quantityFound,
-        quantidadeDevolvida: input.quantityFound,
+        quantidadeDevolvida: Number(previousCount?.data.quantidadeDevolvida ?? 0) + input.quantityFound,
         divergente: difference !== 0,
+        pendente: remainsPending,
+        divergenciaPendenteId: currentPendingId,
         resolucao: input.resolution ?? null,
         observacao: input.reason ?? null,
       });
-      const movementId = crypto.randomUUID();
-      transaction.set(`movimentacoesEstoque/${movementId}`, {
-        bancaId: ctx.env.BANCA_ID,
-        itemReparteId: item.id,
-        itemReservaId: null,
-        tipo: "DEVOLUCAO",
-        quantidade: input.quantityFound,
-        saldoAntes: expected,
-        saldoDepois: Math.max(0, expected - input.quantityFound),
-        motivo: input.reason ?? "Devolução confirmada no recolhimento",
-        criadoEm: now,
-        usuarioId: user.uid,
-      }, { mustNotExist: true });
+      if (input.quantityFound > 0) {
+        const movementId = crypto.randomUUID();
+        transaction.set(`movimentacoesEstoque/${movementId}`, {
+          bancaId: ctx.env.BANCA_ID,
+          itemReparteId: item.id,
+          itemReservaId: null,
+          tipo: "DEVOLUCAO",
+          quantidade: input.quantityFound,
+          saldoAntes: expected,
+          saldoDepois: Math.max(0, expected - input.quantityFound),
+          motivo: input.reason ?? "Devolução confirmada no recolhimento",
+          criadoEm: now,
+          usuarioId: user.uid,
+        }, { mustNotExist: true });
+      }
       if (adjustmentType && difference !== 0) {
         const adjustmentId = crypto.randomUUID();
         transaction.set(`movimentacoesEstoque/${adjustmentId}`, {
@@ -489,45 +649,51 @@ async function reconcileReparte(ctx: RequestContext, user: AdminIdentity, repart
           criadoEm: now,
           usuarioId: user.uid,
         }, { mustNotExist: true });
-        const divergenceId = crypto.randomUUID();
-        divergenceIds.push(divergenceId);
-        transaction.set(`divergencias/${divergenceId}`, {
+      }
+      if (input.quantityFound > 0) {
+        const returnHistoryId = crypto.randomUUID();
+        transaction.set(`historicoDevolucoes/${returnHistoryId}`, {
           bancaId: ctx.env.BANCA_ID,
           recolhimentoId: collectionId,
+          reparteId,
           itemReparteId: item.id,
-          tipo: difference > 0 ? "SOBRA" : "FALTA",
-          esperado: expected,
-          encontrado: input.quantityFound,
-          resolucao: `${input.resolution}: ${input.reason}`,
-          resolvida: true,
-          criadaEm: now,
-          resolvidaEm: now,
+          produtoId: item.data.produtoId ?? null,
+          quantidade: input.quantityFound,
+          data: now,
+          confirmadoPor: user.uid,
         }, { mustNotExist: true });
       }
-      const returnHistoryId = crypto.randomUUID();
-      transaction.set(`historicoDevolucoes/${returnHistoryId}`, {
-        bancaId: ctx.env.BANCA_ID,
-        recolhimentoId: collectionId,
-        reparteId,
-        itemReparteId: item.id,
-        produtoId: item.data.produtoId ?? null,
-        quantidade: input.quantityFound,
-        data: now,
-        confirmadoPor: user.uid,
-      }, { mustNotExist: true });
     }
     setCatalogAvailability(transaction, catalogRows, updatedAvailability, now);
+    const listsToClose = hasPendingDivergence ? [] : relatedLists.filter((list) => list.data.bancaId === ctx.env.BANCA_ID && list.data.status !== "ENCERRADA");
+    for (const list of listsToClose) {
+      transaction.set(`listas/${list.id}`, { ...list.data, status: "ENCERRADA", versao: Number(list.data.versao ?? 0) + 1, encerradaEm: now, atualizadoEm: now });
+      const historyId = crypto.randomUUID();
+      transaction.set(`historicoAlteracoes/${historyId}`, {
+        bancaId: ctx.env.BANCA_ID,
+        entidadeTipo: "LISTA",
+        entidadeId: list.id,
+        campo: "status",
+        antes: list.data.status,
+        depois: "ENCERRADA",
+        tipo: "LISTA_ENCERRADA_APOS_RECOLHIMENTO",
+        usuarioId: user.uid,
+        criadoEm: now,
+      }, { mustNotExist: true });
+    }
     transaction.set(`recolhimentos/${collectionId}`, {
       bancaId: ctx.env.BANCA_ID,
       reparteId,
       dataPrevista: existingCollection?.data.dataPrevista ?? reparte.data.dataRecolhimentoPrevista ?? now,
       iniciadoEm: existingCollection?.data.iniciadoEm ?? now,
-      confirmadoEm: now,
-      status: "CONFIRMADO",
+      confirmadoEm: hasPendingDivergence ? null : now,
+      status: hasPendingDivergence ? "COM_DIVERGENCIA" : "CONFIRMADO",
       observacoes: typeof body.notes === "string" ? body.notes.slice(0, 1000) : null,
     });
-    transaction.set(`repartes/${reparteId}`, { ...reparte.data, status: "ENCERRADO", encerradaEm: now });
-    const response = { reparteId, collectionId, status: "CONFIRMADO", divergenceIds };
+    transaction.set(`repartes/${reparteId}`, hasPendingDivergence
+      ? { ...reparte.data, status: "AGUARDANDO_RECOLHIMENTO", encerradaEm: null, atualizadoEm: now }
+      : { ...reparte.data, status: "ENCERRADO", encerradaEm: now, atualizadoEm: now });
+    const response = { reparteId, collectionId, status: hasPendingDivergence ? "COM_DIVERGENCIA" : "CONFIRMADO", divergenceIds };
     saveIdempotency(transaction, idem, response);
     return response;
   });
@@ -539,8 +705,58 @@ async function listHistories(ctx: RequestContext): Promise<Response> {
   const configuration = HISTORY_COLLECTIONS[type];
   if (!configuration) throw new HttpError({ code: "invalid_history_type", message: "type must be sales, returns, or changes.", status: 400 });
   const limit = parseLimit(ctx.url.searchParams.get("limit"), 30, 100);
-  const documents = await ctx.db.query(configuration.collection, query(configuration.collection, [eq("bancaId", firestoreString(ctx.env.BANCA_ID))], limit, [{ field: { fieldPath: configuration.dateField }, direction: "DESCENDING" }]));
-  return jsonResponse(ctx, { entries: documents.map((document) => ({ id: document.id, ...document.data })), page: { limit, nextCursor: null } });
+  const scope = `histories:v1:${type}`;
+  const cursor = await readPageToken(ctx, ctx.url.searchParams.get("cursor"), scope);
+  const orderBy = [{ field: { fieldPath: configuration.dateField }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
+  const startAt = cursor ? { values: [firestoreString(cursor.sortValue), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${configuration.collection}/${cursor.id}` }], before: false } : undefined;
+  const documents = await ctx.db.query(configuration.collection, query(configuration.collection, [eq("bancaId", firestoreString(ctx.env.BANCA_ID))], limit + 1, orderBy, startAt));
+  const visible = documents.slice(0, limit);
+  const last = visible.at(-1);
+  return jsonResponse(ctx, {
+    entries: visible.map((document) => ({ id: document.id, ...document.data })),
+    page: { limit, nextCursor: documents.length > limit && last ? await pageToken(ctx, scope, String(last.data[configuration.dateField] ?? ""), last.id) : null },
+  });
+}
+
+async function listAdminNotifications(ctx: RequestContext): Promise<Response> {
+  const limit = parseLimit(ctx.url.searchParams.get("limit"), 30, 100);
+  const scope = "admin-notifications:v1";
+  const cursor = await readPageToken(ctx, ctx.url.searchParams.get("cursor"), scope);
+  const orderBy = [{ field: { fieldPath: "criadaEm" }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
+  const startAt = cursor ? { values: [firestoreString(cursor.sortValue), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/notificacoes/${cursor.id}` }], before: false } : undefined;
+  const documents = await ctx.db.query("notificacoes", query("notificacoes", [
+    eq("bancaId", firestoreString(ctx.env.BANCA_ID)),
+    eq("destinatarioTipo", firestoreString("ADMIN")),
+    eq("status", firestoreString("ENVIADA")),
+  ], limit + 1, orderBy, startAt));
+  const visible = documents.slice(0, limit);
+  const last = visible.at(-1);
+  return jsonResponse(ctx, {
+    notifications: visible.map((item) => ({
+      id: item.id,
+      title: String(item.data.titulo ?? "Aviso da banca"),
+      message: String(item.data.mensagem ?? ""),
+      type: String(item.data.tipo ?? "AVISO"),
+      createdAt: item.data.criadaEm ?? item.data.enviadaEm ?? null,
+      read: item.data.lida === true,
+      reservationId: item.data.reservaId ?? null,
+    })),
+    page: { limit, nextCursor: documents.length > limit && last ? await pageToken(ctx, scope, String(last.data.criadaEm ?? last.data.enviadaEm ?? ""), last.id) : null },
+  });
+}
+
+async function markAdminNotificationRead(ctx: RequestContext, notificationId: string): Promise<Response> {
+  if (!validDocumentId(notificationId)) throw new HttpError({ code: "not_found", message: "Notification not found.", status: 404 });
+  const now = new Date().toISOString();
+  const result = await ctx.db.transact(async (transaction) => {
+    const notification = await transaction.get(`notificacoes/${notificationId}`);
+    if (!notification || notification.data.bancaId !== ctx.env.BANCA_ID || notification.data.destinatarioTipo !== "ADMIN") {
+      throw new HttpError({ code: "not_found", message: "Notification not found.", status: 404 });
+    }
+    if (notification.data.lida !== true) transaction.set(`notificacoes/${notificationId}`, { ...notification.data, lida: true, lidaEm: now });
+    return { notificationId, read: true };
+  });
+  return jsonResponse(ctx, result);
 }
 
 async function getBankProfile(ctx: RequestContext): Promise<Response> {
@@ -827,6 +1043,47 @@ async function writeList(ctx: RequestContext, user: AdminIdentity, listId: strin
       atualizadoEm: now,
     };
     transaction.set(`listas/${resolvedListId}`, list, existingList ? {} : { mustNotExist: true });
+    const historyId = crypto.randomUUID();
+    transaction.set(`historicoAlteracoes/${historyId}`, {
+      bancaId: ctx.env.BANCA_ID,
+      entidadeTipo: "LISTA",
+      entidadeId: resolvedListId,
+      campo: null,
+      antes: existingList ? {
+        titulo: existingList.data.titulo,
+        status: existingList.data.status,
+        totalItems: existingList.data.totalItems ?? oldListItems.filter((item) => item.data.ativo !== false).length,
+        itens: oldListItems.filter((item) => item.data.ativo !== false).map((item) => ({
+          id: item.id,
+          itemReparteId: item.data.itemReparteId ?? null,
+          produtoId: item.data.produtoId ?? null,
+          titulo: item.data.tituloExibicao ?? null,
+          volume: item.data.volumeExibicao ?? null,
+          preco: item.data.precoExibicao ?? null,
+        })),
+      } : null,
+      depois: {
+        titulo: list.titulo,
+        status: list.status,
+        totalItems: list.totalItems,
+        itens: stockOutput.map((entry) => ({
+          itemReparteId: entry.stockId,
+          produtoId: entry.productId,
+          titulo: entry.row.title,
+          volume: entry.row.volume,
+          preco: entry.stock.precoVenda,
+          quantidadeRecebida: entry.stock.quantidadeRecebida,
+          codigo: entry.row.code,
+          editora: entry.row.publisher,
+          nomeOriginal: entry.row.originalTitle,
+          tipo: entry.row.type,
+          dataRecolhimento: entry.row.returnDate,
+        })),
+      },
+      tipo: existingList ? "LISTA_ATUALIZADA" : "LISTA_CRIADA",
+      usuarioId: user.uid,
+      criadoEm: now,
+    }, { mustNotExist: true });
     const response = { listId: resolvedListId, reparteId, status: listStatus, itemCount: rows.length, version: list.versao };
     saveIdempotency(transaction, idem, response);
     return response;
@@ -890,6 +1147,53 @@ async function publishList(ctx: RequestContext, user: AdminIdentity, listId: str
     }
     transaction.set(`listas/${listId}`, { ...list.data, status: "PUBLICADA", publicadaEm: now, totalItems: items.length, versao: Number(list.data.versao ?? 0) + 1, atualizadoEm: now });
     const response = { listId, reparteId: list.data.reparteId ?? null, status: "PUBLICADA", publishedAt: now, itemCount: items.length, version: Number(list.data.versao ?? 0) + 1 };
+    saveIdempotency(transaction, idem, response);
+    return response;
+  });
+  return jsonResponse(ctx, result);
+}
+
+async function archiveList(ctx: RequestContext, user: AdminIdentity, listId: string): Promise<Response> {
+  if (!validDocumentId(listId)) throw new HttpError({ code: "not_found", message: "List not found.", status: 404 });
+  const body = await readJsonBody(ctx.request, 2_000);
+  const now = new Date().toISOString();
+  const result = await ctx.db.transact(async (transaction) => {
+    const idem = await prepareIdempotency(ctx, transaction, `list-archive:${user.uid}:${listId}`, { ...body, listId });
+    if (idem.replay !== undefined) return idem.replay as JsonObject;
+    const list = await transaction.get(`listas/${listId}`);
+    if (!list || list.data.bancaId !== ctx.env.BANCA_ID) throw new HttpError({ code: "not_found", message: "List not found.", status: 404 });
+    if (list.data.status === "ARQUIVADA") {
+      const response = { listId, status: "ARQUIVADA", alreadyArchived: true };
+      saveIdempotency(transaction, idem, response);
+      return response;
+    }
+    if (!["RASCUNHO", "ENCERRADA"].includes(String(list.data.status))) {
+      throw new HttpError({ code: "list_not_archivable", message: "A published list must be reconciled and closed before it can be archived.", status: 409 });
+    }
+    const [listItems, reparte, siblingLists] = await Promise.all([
+      transaction.query("itensLista", query("itensLista", [eq("bancaId", firestoreString(ctx.env.BANCA_ID)), eq("listaId", firestoreString(listId))], 100)),
+      transaction.get(`repartes/${String(list.data.reparteId ?? "")}`),
+      transaction.query("listas", query("listas", [eq("reparteId", firestoreString(String(list.data.reparteId ?? "")))], 100)),
+    ]);
+    for (const item of listItems) transaction.set(`itensLista/${item.id}`, { ...item.data, ativo: false, atualizadoEm: now });
+    transaction.set(`listas/${listId}`, { ...list.data, status: "ARQUIVADA", versao: Number(list.data.versao ?? 0) + 1, arquivadaEm: now, atualizadoEm: now });
+    if (reparte && reparte.data.bancaId === ctx.env.BANCA_ID && reparte.data.status === "RASCUNHO" &&
+        !siblingLists.some((candidate) => candidate.id !== listId && candidate.data.bancaId === ctx.env.BANCA_ID && !["ARQUIVADA", "ENCERRADA"].includes(String(candidate.data.status)))) {
+      transaction.set(`repartes/${reparte.id}`, { ...reparte.data, status: "ARQUIVADO", arquivadoEm: now, atualizadoEm: now });
+    }
+    const historyId = crypto.randomUUID();
+    transaction.set(`historicoAlteracoes/${historyId}`, {
+      bancaId: ctx.env.BANCA_ID,
+      entidadeTipo: "LISTA",
+      entidadeId: listId,
+      campo: "status",
+      antes: list.data.status,
+      depois: "ARQUIVADA",
+      tipo: "LISTA_ARQUIVADA",
+      usuarioId: user.uid,
+      criadoEm: now,
+    }, { mustNotExist: true });
+    const response = { listId, status: "ARQUIVADA", alreadyArchived: false };
     saveIdempotency(transaction, idem, response);
     return response;
   });
@@ -972,6 +1276,36 @@ async function updateBankProfile(ctx: RequestContext, user: AdminIdentity): Prom
         const data = hour?.data ?? defaultOpeningHours(day);
         return { dayOfWeek: day, closed: data.fechado === true, opensAt: data.abre ?? data.horaAbertura ?? null, closesAt: data.fecha ?? data.horaFechamento ?? null };
       });
+    const historyId = crypto.randomUUID();
+    transaction.set(`historicoAlteracoes/${historyId}`, {
+      bancaId: ctx.env.BANCA_ID,
+      entidadeTipo: "BANCA",
+      entidadeId: ctx.env.BANCA_ID,
+      campo: null,
+      antes: {
+        name: bank.data.nomeExibicao ?? null,
+        phone: bank.data.telefone ?? null,
+        address: bank.data.endereco ?? null,
+        collectionSafetyMarginDays: bank.data.margemRecolhimentoDias ?? 2,
+        withdrawalToleranceDays: bank.data.toleranciaRetiradaDias ?? 0,
+        hours: Array.from({ length: 7 }, (_, day) => {
+          const hour = storedHours.find((entry) => weekdayIndex(entry.data.diaSemana, entry.id) === day);
+          const data = hour?.data ?? defaultOpeningHours(day);
+          return { dayOfWeek: day, closed: data.fechado === true, opensAt: data.abre ?? data.horaAbertura ?? null, closesAt: data.fecha ?? data.horaFechamento ?? null };
+        }),
+      },
+      depois: {
+        name: updated.nomeExibicao ?? null,
+        phone: updated.telefone ?? null,
+        address: updated.endereco ?? null,
+        collectionSafetyMarginDays: updated.margemRecolhimentoDias ?? 2,
+        withdrawalToleranceDays: updated.toleranciaRetiradaDias ?? 0,
+        hours: responseHours,
+      },
+      tipo: "CONFIGURACAO_BANCA_ATUALIZADA",
+      usuarioId: user.uid,
+      criadoEm: now,
+    }, { mustNotExist: true });
     const response = {
       profile: { name: updated.nomeExibicao, phone: updated.telefone, address: updated.endereco, collectionSafetyMarginDays: updated.margemRecolhimentoDias, withdrawalToleranceDays: updated.toleranciaRetiradaDias },
       hours: responseHours,
@@ -993,11 +1327,14 @@ export async function handleAdminRoute(ctx: RequestContext): Promise<Response | 
   if (ctx.request.method === "GET" && pathname === "/api/admin/repartes") return listRepartes(ctx);
   if (ctx.request.method === "GET" && pathname === "/api/admin/lists") return listLists(ctx);
   if (ctx.request.method === "GET" && pathname === "/api/admin/histories") return listHistories(ctx);
+  if (ctx.request.method === "GET" && pathname === "/api/admin/notifications") return listAdminNotifications(ctx);
   if (ctx.request.method === "GET" && pathname === "/api/admin/banca") return getBankProfile(ctx);
   if (ctx.request.method === "PUT" && pathname === "/api/admin/banca") return updateBankProfile(ctx, user);
 
   const listPublish = pathname.match(/^\/api\/admin\/lists\/([A-Za-z0-9_-]+)\/publish$/);
   if (ctx.request.method === "POST" && listPublish) return publishList(ctx, user, listPublish[1]);
+  const listArchive = pathname.match(/^\/api\/admin\/lists\/([A-Za-z0-9_-]+)\/archive$/);
+  if (ctx.request.method === "POST" && listArchive) return archiveList(ctx, user, listArchive[1]);
   const listDetail = pathname.match(/^\/api\/admin\/lists\/([A-Za-z0-9_-]+)$/);
   if (ctx.request.method === "GET" && listDetail) return getAdminList(ctx, listDetail[1]);
   if (ctx.request.method === "PUT" && listDetail) return writeList(ctx, user, listDetail[1]);
@@ -1005,6 +1342,10 @@ export async function handleAdminRoute(ctx: RequestContext): Promise<Response | 
 
   const withdraw = pathname.match(/^\/api\/admin\/reservations\/([A-Za-z0-9_-]+)\/withdraw$/);
   if (ctx.request.method === "POST" && withdraw) return withdrawReservation(ctx, user, withdraw[1]);
+  const cancel = pathname.match(/^\/api\/admin\/reservations\/([A-Za-z0-9_-]+)\/cancel$/);
+  if (ctx.request.method === "POST" && cancel) return cancelReservationByAdmin(ctx, user, cancel[1]);
+  const notificationRead = pathname.match(/^\/api\/admin\/notifications\/([A-Za-z0-9_-]+)\/read$/);
+  if (ctx.request.method === "POST" && notificationRead) return markAdminNotificationRead(ctx, notificationRead[1]);
   const reconciliation = pathname.match(/^\/api\/admin\/repartes\/([A-Za-z0-9_-]+)\/reconciliation$/);
   if (ctx.request.method === "GET" && reconciliation) return getReconciliation(ctx, reconciliation[1]);
   const confirmReconciliation = pathname.match(/^\/api\/admin\/repartes\/([A-Za-z0-9_-]+)\/reconcile$/);

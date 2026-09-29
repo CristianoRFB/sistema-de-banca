@@ -1,3 +1,5 @@
+import type { TipoProduto } from "../../domain/enums/TipoProduto";
+
 export type ImportSource =
   | "FOTO"
   | "PDF"
@@ -20,6 +22,9 @@ export type ImportColumnMap = Partial<Record<ImportField, number>>;
 
 export interface ImportedListRow {
   id: string;
+  /** Stable inventory identity used by the admin list-save API. */
+  itemReparteId?: string;
+  productId?: string;
   line: number;
   title: string;
   volume: string | null;
@@ -33,7 +38,7 @@ export interface ImportedListRow {
   fieldConfidence: Partial<Record<ImportField, number>>;
   issues: string[];
   requiresReview: boolean;
-  type?: string;
+  type?: TipoProduto;
 }
 
 export interface ImportDraft {

@@ -5,7 +5,8 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { BuscarPerfil } from '../../features/cliente/components/BuscarPerfil';
 import type { ReservaCliente } from '../../features/cliente/cliente.types';
-import { lerSessaoCliente } from '../../infra/local-storage/cliente-session';
+import { clienteRepository } from '../../features/cliente/cliente.repository';
+import { lerSessaoCliente, removerSessaoCliente } from '../../infra/local-storage/cliente-session';
 import { reservaRepository } from '../../features/reservas/reserva.repository';
 import { useToast } from '../../components/ui/Toast';
 
@@ -21,16 +22,31 @@ function statusText(status: ReservaCliente['status']) {
 export function MinhasReservasPage() {
   const [session, setSession] = useState(() => lerSessaoCliente());
   const [items, setItems] = useState<ReservaCliente[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => !!lerSessaoCliente());
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor: string | null = null) => {
     if (!session) return;
-    try { setItems(await reservaRepository.listMine(session.token)); setError(false); }
-    catch { setError(true); }
-    finally { setLoading(false); }
+    if (cursor) { setLoadingMore(true); setMoreFailed(false); }
+    else setLoading(true);
+    try {
+      const page = await reservaRepository.listMinePage(session.token, cursor);
+      setItems((current) => cursor ? [...current, ...page.reservations] : page.reservations);
+      setNextCursor(page.nextCursor);
+      setError(false);
+    } catch {
+      if (cursor) setMoreFailed(true);
+      else setError(true);
+    } finally {
+      if (cursor) setLoadingMore(false);
+      else setLoading(false);
+    }
   }, [session]);
 
   // load() updates React only after its awaited API request resolves.
@@ -49,6 +65,17 @@ export function MinhasReservasPage() {
     catch { toast('Não foi possível cancelar agora. Tente novamente.', 'info'); }
   }
 
+  async function logout() {
+    if (!session || loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await clienteRepository.logout(session.token);
+      removerSessaoCliente(); setSession(null); setItems([]);
+    } catch {
+      toast('Não foi possível encerrar a sessão agora. Verifique a conexão e tente novamente.', 'info');
+    } finally { setLoggingOut(false); }
+  }
+
   return (
     <div className="customer-page page-wrap">
       <div className="page-kicker"><span className="eyebrow">03 · SEU CANTO DA BANCA</span><span className="page-count">RESERVAS / CLIENTE</span></div>
@@ -56,16 +83,16 @@ export function MinhasReservasPage() {
       {!session ? <section className="identity-panel"><div className="identity-panel__intro"><span className="identity-icon"><PackageCheck size={21} /></span><div><h2>Encontre suas reservas</h2><p>Entre com nome e telefone para ver sua lista.</p></div></div><BuscarPerfil onAuthenticated={(next) => { setLoading(true); setSession(next); navigate('/cliente/reservas'); }} /></section>
         : loading ? <div className="loading-block"><LoaderCircle className="spin" size={19} /> Buscando suas reservas…</div>
           : error ? <div className="empty-state"><h2>Não conseguimos abrir suas reservas.</h2><p>Confira a conexão e tente novamente.</p><Button variant="secondary" onClick={() => void load()}>Tentar de novo</Button></div>
-            : items.length ? <div className="reservation-list">{items.map((reservation) => <article className="reservation-card" key={reservation.id}>
+            : items.length ? <><div className="reservation-list">{items.map((reservation) => <article className="reservation-card" key={reservation.id}>
               <div className="reservation-card__top"><span className="eyebrow">RESERVA #{reservation.id.slice(0, 6).toUpperCase()}</span><Badge tone={reservation.status === 'ATIVA' ? 'lime' : 'muted'}>{statusText(reservation.status)}</Badge></div>
               <div className="reservation-card__body"><div className="reservation-items">{reservation.itens.map((item) => <div key={item.itemReservaId}><span className="reservation-item__mark">読</span><span><strong>{item.titulo}</strong><small>{item.volume ? `Vol. ${item.volume} · ` : ''}{item.quantidade} {item.quantidade === 1 ? 'unidade' : 'unidades'}</small></span></div>)}</div>
                 <div className="reservation-detail-row"><span><CalendarDays size={16} /> Retirada pretendida</span><b>{formatDate(reservation.dataRetiradaPretendida)}</b></div>
                 <div className="reservation-detail-row"><span><Clock3 size={16} /> Prazo</span><b>{formatExpiry(reservation.expiraEm)}</b></div>
               </div>
               {reservation.status === 'ATIVA' || reservation.status === 'PARCIALMENTE_RETIRADA' ? <div className="reservation-card__actions"><Button size="small" onClick={() => void updateIntent(reservation.id, 'VOU_BUSCAR')}><Check size={15} /> Vou buscar</Button><Button size="small" variant="secondary" onClick={() => void updateIntent(reservation.id, 'ESTOU_INDO')}>Estou indo <ArrowRight size={15} /></Button><button className="text-button" type="button" onClick={() => void cancel(reservation.id)}>Desistir</button><Link className="text-button" to={`/cliente/reservas/${reservation.id}`}>Detalhes</Link></div> : <div className="reservation-card__footer"><span>Histórico preservado</span><Link to={`/cliente/reservas/${reservation.id}`}>Ver detalhes <ArrowRight size={15} /></Link></div>}
-            </article>)}</div>
+            </article>)}</div>{nextCursor && <div className="history-load-more"><Button variant="secondary" disabled={loadingMore} onClick={() => void load(nextCursor)}>{loadingMore ? 'Carregando…' : moreFailed ? 'Tentar carregar novamente' : 'Carregar mais reservas'}</Button></div>}</>
             : <div className="empty-state"><Bell size={24} /><span className="eyebrow">SEM RESERVAS ATIVAS</span><h2>Uma boa história<br />está te esperando.</h2><p>Explore o catálogo e reserve o próximo volume direto pelo celular.</p><Link className="button button--dark" to="/catalogo">Explorar catálogo <ArrowRight size={17} /></Link></div>}
-      {session && <button type="button" className="text-button signout-link" onClick={() => { localStorage.removeItem('banca-ana-maria:cliente-session:v1'); setSession(null); setItems([]); }}>Sair deste dispositivo</button>}
+      {session && <button type="button" className="text-button signout-link" disabled={loggingOut} onClick={() => void logout()}>{loggingOut ? 'Encerrando…' : 'Sair deste dispositivo'}</button>}
     </div>
   );
 }

@@ -89,6 +89,15 @@
       ]
     },
     {
+      "collectionGroup": "itensReserva",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "reservaId", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "reservas",
       "queryScope": "COLLECTION",
       "fields": [
@@ -172,6 +181,25 @@
       ]
     },
     {
+      "collectionGroup": "repartes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataRecebimento", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "repartes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "dataRecebimento", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "itensReparte",
       "queryScope": "COLLECTION",
       "fields": [
@@ -185,10 +213,22 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "bancaId", "order": "ASCENDING" },
+        { "fieldPath": "destinatarioTipo", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancaId", "order": "ASCENDING" },
         { "fieldPath": "clienteId", "order": "ASCENDING" },
         { "fieldPath": "destinatarioTipo", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "criadaEm", "order": "DESCENDING" }
+        { "fieldPath": "criadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
       ]
     },
     {
@@ -205,7 +245,8 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "bancaId", "order": "ASCENDING" },
-        { "fieldPath": "confirmadaEm", "order": "DESCENDING" }
+        { "fieldPath": "confirmadaEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
       ]
     },
     {
@@ -213,7 +254,8 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "bancaId", "order": "ASCENDING" },
-        { "fieldPath": "data", "order": "DESCENDING" }
+        { "fieldPath": "data", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
       ]
     },
     {
@@ -221,7 +263,8 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "bancaId", "order": "ASCENDING" },
-        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+        { "fieldPath": "criadoEm", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
       ]
     }
   ],

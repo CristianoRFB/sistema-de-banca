@@ -8,6 +8,13 @@ const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_
 const CATALOG_SCAN_BATCH_SIZE = 50;
 const CATALOG_MAX_SCAN_SIZE = 200;
 
+function publicCacheResponse(ctx: RequestContext, payload: unknown): Response {
+  const response = jsonResponse(ctx, payload);
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "public, max-age=60, stale-while-revalidate=840");
+  return new Response(response.body, { status: response.status, headers });
+}
+
 interface CatalogCursorFilters {
   nameQuery: string;
   productType: string;
@@ -174,7 +181,7 @@ export async function handlePublicRoute(ctx: RequestContext): Promise<Response |
       orderBy: [{ field: { fieldPath: "diaSemana" }, direction: "ASCENDING" }],
       limit: 7,
     });
-    return jsonResponse(ctx, {
+    return publicCacheResponse(ctx, {
       profile: {
         name: document.data.nomeExibicao ?? null,
         slug: document.data.slug ?? null,
@@ -276,7 +283,7 @@ export async function handlePublicRoute(ctx: RequestContext): Promise<Response |
       const cursorDocument = matches.length > limit ? visible.at(-1)?.document : lastScannedDocument;
       if (cursorDocument) nextCursor = await makeCatalogCursor(ctx, cursorDocument.id, catalogSortValue(cursorDocument, sort), cursorFilters);
     }
-    return jsonResponse(ctx, {
+    return publicCacheResponse(ctx, {
       items: visible.map(({ item }) => item),
       page: { limit, nextCursor, hasMore },
       filters: { q: nameQuery, type: productType || null, sort, availability: availabilityFilter },
@@ -312,7 +319,7 @@ export async function handlePublicRoute(ctx: RequestContext): Promise<Response |
       Number(stock.data.quantidadeRecebida ?? 0) + Number(stock.data.quantidadeAjustePositivo ?? 0) -
       Number(stock.data.quantidadeReservada ?? 0) - Number(stock.data.quantidadeRetirada ?? 0) -
       Number(stock.data.quantidadeDevolvida ?? 0) - Number(stock.data.quantidadeAjusteNegativo ?? 0));
-    return jsonResponse(ctx, {
+    return publicCacheResponse(ctx, {
       item: {
         id: selected.id,
         listId: selected.data.listaId,

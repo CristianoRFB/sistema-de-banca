@@ -35,3 +35,10 @@ Registre aqui mudanças relevantes tomadas durante o desenvolvimento, com data, 
 - O Vite encaminha `/api` para o Wrangler local em `localhost:8787`; isso mantém a UI e a API same-origin durante desenvolvimento. O typecheck do Worker tem configuração e comando próprios (`npm run worker:typecheck`) em vez de depender acidentalmente das opções do frontend.
 - O Wrangler é uma dependência de desenvolvimento com versão fixa; os tipos de runtime e bindings são gerados de `wrangler.toml` para `worker-configuration.d.ts` e usados no typecheck. O exemplo declara os dois secrets obrigatórios sem incluir seus valores no repositório. O `namespace_id` de rate limit é um inteiro positivo escolhido de forma exclusiva para a conta Cloudflare.
 - Nenhum deploy deve ocorrer antes de validação de build, lint, tipos, testes no Emulator/staging e teste do fluxo real com a conta provisionada.
+
+## 2026-09-29 — Cache offline restrito a conteúdo público
+
+- O PWA pré-carrega os chunks JavaScript do app, exceto dependências grandes usadas sob demanda para importação/exportação e OCR. Isso permite reabrir o shell instalado sem baixar novamente o app.
+- O service worker usa NetworkFirst para GET de perfil público da banca e catálogo, mantendo até 120 respostas por 15 minutos e uma cópia de rede por 3 segundos antes de recorrer ao cache. O servidor permite cache curto de 60 segundos e revalidação stale por 14 minutos.
+- Busca pública de perfil de cliente, dados autenticados/admin e respostas de erro seguem `no-store`; nenhuma escrita é cacheada. Reservas e ações administrativas precisam de resposta online e validação transacional atual.
+- A UI informa quando o dispositivo está offline ou quando o service worker serviu uma cópia de reserva, mesmo se o navegador ainda indicar conexão. O aviso some após uma resposta pública atualizada. Uma reserva iniciada offline permanece indisponível.

@@ -1,6 +1,8 @@
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { BookOpen, House, MapPin, UserRound } from 'lucide-react';
 import { BANCA } from '../config';
+import { isUsingCachedPublicData, subscribeCachedPublicData } from '../../infra/browser/api-client';
 
 const nav = [
   { to: '/', label: 'Início', icon: House, end: true },
@@ -10,8 +12,28 @@ const nav = [
 ];
 
 export function PublicShell() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const usingCachedData = useSyncExternalStore(subscribeCachedPublicData, isUsingCachedPublicData, () => false);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setOnline(navigator.onLine);
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
   return (
     <div className="site-shell">
+      {(!online || usingCachedData) && (
+        <div className="offline-notice" role="status" aria-live="polite">
+          {!online
+            ? 'Sem conexão. O perfil e o catálogo podem estar desatualizados; reservas e outras ações exigem internet.'
+            : 'Conteúdo público salvo no aparelho pode estar desatualizado. Reservas serão confirmadas pelo serviço antes de concluir.'}
+        </div>
+      )}
       <header className="site-header">
         <Link className="brand-lockup" to="/" aria-label="Banca Ana Maria, início">
           <span className="brand-mark">B<span>.</span></span>

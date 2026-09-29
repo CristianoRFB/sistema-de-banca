@@ -1,6 +1,6 @@
 import { catalogRowsForStocks, eq, firestoreString, jsonResponse, prepareIdempotency, query, readJsonBody, saveIdempotency, setCatalogAvailability } from "../api";
 import { assertInventoryValid, defaultOpeningHours, isPlainObject, localWeekday, reservationAvailability, requirePositiveInteger, requireString, validatePickupWindow } from "../domain";
-import { createClientSessionToken, getClientIdentity, hashClientSessionToken, hashCustomerPhone, maskPhone, normalizeName, normalizePhone, rateLimit, verifyClientSessionSignature } from "../security";
+import { createClientSessionToken, getClientIdentity, hashClientSessionToken, hashCustomerPhone, isBrazilianPhone, maskPhone, normalizeName, normalizePhone, phoneIndexCandidates, rateLimit, verifyClientSessionSignature } from "../security";
 import type { FirestoreDocument, JsonObject, RequestContext } from "../types";
 import { HttpError } from "../types";
 
@@ -16,22 +16,31 @@ function itemQuery(reservationId: string): JsonObject {
   return query("itensReserva", [eq("reservaId", firestoreString(reservationId))], 100, [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }]);
 }
 
-async function makeClientPageCursor(ctx: RequestContext, date: string, id: string): Promise<string> {
-  const signature = await hashClientSessionToken(ctx.env, `client-reservation-cursor:v1:${date}:${id}`);
+function itemsForReservationsQuery(reservationIds: string[], bancaId: string): JsonObject {
+  return query("itensReserva", [
+    eq("bancaId", firestoreString(bancaId)),
+    { field: { fieldPath: "reservaId" }, op: "IN", value: { arrayValue: { values: reservationIds.map(firestoreString) } } },
+  ], reservationIds.length * 100, [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }]);
+}
+
+async function makeClientPageCursor(ctx: RequestContext, date: string, id: string, scope: "reservations" | "notifications" = "reservations"): Promise<string> {
+  const purpose = scope === "reservations" ? "client-reservation-cursor:v1" : "client-notification-cursor:v1";
+  const signature = await hashClientSessionToken(ctx.env, `${purpose}:${date}:${id}`);
   const bytes = new TextEncoder().encode(JSON.stringify({ date, id, signature }));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-async function readClientPageCursor(ctx: RequestContext, value: string | null): Promise<{ date: string; id: string } | null> {
+async function readClientPageCursor(ctx: RequestContext, value: string | null, scope: "reservations" | "notifications" = "reservations"): Promise<{ date: string; id: string } | null> {
   if (!value) return null;
   if (value.length > 512 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new HttpError({ code: "invalid_cursor", message: "cursor is invalid.", status: 400 });
   try {
     const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
     const parsed = JSON.parse(atob(base64)) as { date?: unknown; id?: unknown; signature?: unknown };
+    const purpose = scope === "reservations" ? "client-reservation-cursor:v1" : "client-notification-cursor:v1";
     if (typeof parsed.date !== "string" || typeof parsed.id !== "string" || typeof parsed.signature !== "string" || !validDocumentId(parsed.id) ||
-        !await verifyClientSessionSignature(ctx.env, `client-reservation-cursor:v1:${parsed.date}:${parsed.id}`, parsed.signature)) {
+        !await verifyClientSessionSignature(ctx.env, `${purpose}:${parsed.date}:${parsed.id}`, parsed.signature)) {
       throw new Error("Invalid signed cursor.");
     }
     return { date: parsed.date, id: parsed.id };
@@ -106,31 +115,33 @@ async function createSession(ctx: RequestContext): Promise<Response> {
   const name = requireString(body.name, "name", 80);
   const phone = normalizePhone(requireString(body.phone, "phone", 32));
   const nameNormalized = normalizeName(name);
-  if (nameNormalized.length < 2 || phone.length < 10 || phone.length > 13) {
+  if (nameNormalized.length < 2 || !isBrazilianPhone(phone)) {
     throw new HttpError({ code: "identity_not_found", message: "No profile matched those details.", status: 404 });
   }
   const bank = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}`);
   if (!bank || bank.data.ativo === false) throw new HttpError({ code: "bank_not_found", message: "The bank is not available.", status: 404 });
 
-  const phoneIndexId = await hashCustomerPhone(ctx.env, phone);
+  const phoneIndexIds = await Promise.all(phoneIndexCandidates(phone).map((candidate) => hashCustomerPhone(ctx.env, candidate)));
+  const canonicalPhoneIndexId = await hashCustomerPhone(ctx.env, phone);
   const token = createClientSessionToken();
   const tokenHash = await hashClientSessionToken(ctx.env, token);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 86_400_000);
   const result = await ctx.db.transact(async (transaction) => {
-    const phoneIndex = await transaction.get(`indiceTelefonesClientes/${phoneIndexId}`);
-    let clientId = String(phoneIndex?.data.clienteId ?? "");
+    const phoneIndexes = await Promise.all(phoneIndexIds.map((id) => transaction.get(`indiceTelefonesClientes/${id}`)));
+    const existingIndexes = phoneIndexes.filter((index): index is NonNullable<typeof index> => index !== null);
+    const indexedClientIds = [...new Set(existingIndexes.map((index) => String(index.data.clienteId ?? "")))];
+    if (indexedClientIds.length > 1) {
+      throw new HttpError({ code: "identity_not_found", message: "No profile matched those details.", status: 404 });
+    }
+    let clientId = indexedClientIds[0] ?? "";
     let client: JsonObject;
-    if (phoneIndex) {
+    if (existingIndexes.length) {
       const existing = await transaction.get(`clientes/${clientId}`);
       if (!existing || existing.data.ativo !== true || existing.data.bancaId !== ctx.env.BANCA_ID || existing.data.nomeNormalizado !== nameNormalized) {
         throw new HttpError({ code: "identity_not_found", message: "No profile matched those details.", status: 404 });
       }
-      throw new HttpError({
-        code: "profile_session_exists",
-        message: "This profile is already linked to a device session. Use that device or ask the bank for help.",
-        status: 409,
-      });
+      throw new HttpError({ code: "identity_not_found", message: "No profile matched those details.", status: 404 });
     } else {
       clientId = crypto.randomUUID();
       client = {
@@ -140,13 +151,13 @@ async function createSession(ctx: RequestContext): Promise<Response> {
         telefone: phone,
         telefoneNormalizado: phone,
         telefoneFinal: phone.slice(-4),
-        telefoneHash: phoneIndexId,
+        telefoneHash: canonicalPhoneIndexId,
         criadoEm: now.toISOString(),
         atualizadoEm: now.toISOString(),
         ativo: true,
       };
       transaction.set(`clientes/${clientId}`, client, { mustNotExist: true });
-      transaction.set(`indiceTelefonesClientes/${phoneIndexId}`, { bancaId: ctx.env.BANCA_ID, clienteId: clientId, criadoEm: now.toISOString() }, { mustNotExist: true });
+      transaction.set(`indiceTelefonesClientes/${canonicalPhoneIndexId}`, { bancaId: ctx.env.BANCA_ID, clienteId: clientId, criadoEm: now.toISOString() }, { mustNotExist: true });
     }
     const session = {
       bancaId: ctx.env.BANCA_ID,
@@ -330,6 +341,7 @@ async function createReservation(ctx: RequestContext): Promise<Response> {
 }
 
 async function listReservations(ctx: RequestContext): Promise<Response> {
+  await rateLimit(ctx, "client-read");
   const identity = await getClientIdentity(ctx);
   const cursor = await readClientPageCursor(ctx, ctx.url.searchParams.get("cursor"));
   const orderBy = [{ field: { fieldPath: "criadaEm" }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
@@ -339,8 +351,9 @@ async function listReservations(ctx: RequestContext): Promise<Response> {
     eq("clienteId", firestoreString(identity.clientId)),
   ], 31, orderBy, startAt));
   const visible = documents.slice(0, 30);
-  const allItems: FirestoreDocument[] = [];
-  for (const reservation of visible) allItems.push(...await ctx.db.query("itensReserva", itemQuery(reservation.id)));
+  const allItems = visible.length
+    ? await ctx.db.query("itensReserva", itemsForReservationsQuery(visible.map((reservation) => reservation.id), ctx.env.BANCA_ID))
+    : [];
   const grouped = new Map<string, FirestoreDocument[]>();
   for (const item of allItems) grouped.set(String(item.data.reservaId), [...(grouped.get(String(item.data.reservaId)) ?? []), item]);
   return jsonResponse(ctx, {
@@ -349,15 +362,31 @@ async function listReservations(ctx: RequestContext): Promise<Response> {
   });
 }
 
+async function getReservationDetails(ctx: RequestContext, reservationId: string): Promise<Response> {
+  await rateLimit(ctx, "client-read");
+  if (!validDocumentId(reservationId)) throw new HttpError({ code: "not_found", message: "Reservation not found.", status: 404 });
+  const identity = await getClientIdentity(ctx);
+  const reservation = await ctx.db.get(`reservas/${reservationId}`);
+  if (!reservation || reservation.data.bancaId !== ctx.env.BANCA_ID || reservation.data.clienteId !== identity.clientId) {
+    throw new HttpError({ code: "not_found", message: "Reservation not found.", status: 404 });
+  }
+  const items = await ctx.db.query("itensReserva", itemQuery(reservationId));
+  return jsonResponse(ctx, publicReservation(reservation, items));
+}
+
 async function listNotifications(ctx: RequestContext): Promise<Response> {
+  await rateLimit(ctx, "client-read");
   const identity = await getClientIdentity(ctx);
   const limit = 30;
+  const cursor = await readClientPageCursor(ctx, ctx.url.searchParams.get("cursor"), "notifications");
+  const orderBy = [{ field: { fieldPath: "criadaEm" }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
+  const startAt = cursor ? { values: [firestoreString(cursor.date), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/notificacoes/${cursor.id}` }], before: false } : undefined;
   const documents = await ctx.db.query("notificacoes", query("notificacoes", [
     eq("bancaId", firestoreString(ctx.env.BANCA_ID)),
     eq("clienteId", firestoreString(identity.clientId)),
     eq("destinatarioTipo", firestoreString("CLIENTE")),
     eq("status", firestoreString("ENVIADA")),
-  ], limit + 1, [{ field: { fieldPath: "criadaEm" }, direction: "DESCENDING" }]));
+  ], limit + 1, orderBy, startAt));
   const visible = documents.slice(0, limit);
   return jsonResponse(ctx, {
     notifications: visible.map((item) => ({
@@ -368,8 +397,25 @@ async function listNotifications(ctx: RequestContext): Promise<Response> {
       lida: item.data.lida === true,
       tipo: String(item.data.tipo ?? "AVISO"),
     })),
-    page: { limit, nextCursor: null },
+    page: { limit, nextCursor: documents.length > limit && visible.at(-1) ? await makeClientPageCursor(ctx, String(visible.at(-1)!.data.criadaEm ?? visible.at(-1)!.data.enviadaEm ?? ""), visible.at(-1)!.id, "notifications") : null },
   });
+}
+
+async function markClientNotificationRead(ctx: RequestContext, notificationId: string): Promise<Response> {
+  await rateLimit(ctx, "client-write");
+  if (!validDocumentId(notificationId)) throw new HttpError({ code: "not_found", message: "Notification not found.", status: 404 });
+  const identity = await getClientIdentity(ctx);
+  const now = new Date().toISOString();
+  const result = await ctx.db.transact(async (transaction) => {
+    const notification = await transaction.get(`notificacoes/${notificationId}`);
+    if (!notification || notification.data.bancaId !== ctx.env.BANCA_ID || notification.data.clienteId !== identity.clientId ||
+        notification.data.destinatarioTipo !== "CLIENTE" || notification.data.status !== "ENVIADA") {
+      throw new HttpError({ code: "not_found", message: "Notification not found.", status: 404 });
+    }
+    if (notification.data.lida !== true) transaction.set(`notificacoes/${notificationId}`, { ...notification.data, lida: true, lidaEm: now });
+    return { notificationId, read: true };
+  });
+  return jsonResponse(ctx, result);
 }
 
 async function cancelReservation(ctx: RequestContext, reservationId: string): Promise<Response> {
@@ -428,6 +474,21 @@ async function cancelReservation(ctx: RequestContext, reservationId: string): Pr
     const nextStatus = finalStatus === "PARCIALMENTE_RETIRADA" ? finalStatus : finalStatus === "CONCLUIDA" ? finalStatus : "CANCELADA";
     const result = { reservationId, status: nextStatus, released: !alreadyTerminal };
     transaction.set(`reservas/${reservationId}`, { ...reservation.data, status: nextStatus, atualizadaEm: now.toISOString() });
+    if (!alreadyTerminal) {
+      const historyId = crypto.randomUUID();
+      transaction.set(`historicoAlteracoes/${historyId}`, {
+        bancaId: ctx.env.BANCA_ID,
+        entidadeTipo: "RESERVA",
+        entidadeId: reservationId,
+        campo: "cancelamento",
+        antes: { status: reservation.data.status, itensAtivos: mutable.length },
+        depois: { status: nextStatus, itensCancelados: mutable.length },
+        tipo: "CANCELAMENTO_CLIENTE",
+        clienteId: identity.clientId,
+        usuarioId: null,
+        criadoEm: now.toISOString(),
+      }, { mustNotExist: true });
+    }
     saveIdempotency(transaction, idempotency, result);
     return result;
   });
@@ -560,6 +621,7 @@ async function rescheduleReservation(ctx: RequestContext, reservationId: string)
 }
 
 async function getProfile(ctx: RequestContext): Promise<Response> {
+  await rateLimit(ctx, "client-read");
   const identity = await getClientIdentity(ctx);
   return jsonResponse(ctx, { profile: { clientId: identity.clientId, name: identity.client.nome, phone: identity.client.telefone, maskedPhone: maskPhone(String(identity.client.telefone ?? "")) } });
 }
@@ -571,22 +633,30 @@ async function updateProfile(ctx: RequestContext): Promise<Response> {
   const name = requireString(body.name, "name", 80);
   const phone = normalizePhone(requireString(body.phone, "phone", 32));
   const normalizedName = normalizeName(name);
-  if (normalizedName.length < 2 || phone.length < 10 || phone.length > 13) throw new HttpError({ code: "invalid_profile", message: "Name or phone is invalid.", status: 400 });
-  const nextPhoneHash = await hashCustomerPhone(ctx.env, phone);
-  const oldPhoneHash = String(identity.client.telefoneHash ?? await hashCustomerPhone(ctx.env, String(identity.client.telefoneNormalizado ?? identity.client.telefone ?? "")));
+  if (normalizedName.length < 2 || !isBrazilianPhone(phone)) throw new HttpError({ code: "invalid_profile", message: "Name or phone is invalid.", status: 400 });
+  const nextPhoneHashes = await Promise.all(phoneIndexCandidates(phone).map((candidate) => hashCustomerPhone(ctx.env, candidate)));
+  const canonicalPhoneHash = await hashCustomerPhone(ctx.env, phone);
   const now = new Date().toISOString();
   const result = await ctx.db.transact(async (transaction) => {
     const idempotency = await prepareIdempotency(ctx, transaction, `client-profile:${identity.clientId}`, { name, phone });
     if (idempotency.replay !== undefined) return idempotency.replay as JsonObject;
-    const [session, client, newPhoneIndex] = await Promise.all([
+    const [session, client] = await Promise.all([
       transaction.get(`sessoesClientes/${identity.sessionId}`),
       transaction.get(`clientes/${identity.clientId}`),
-      transaction.get(`indiceTelefonesClientes/${nextPhoneHash}`),
     ]);
     if (!session || session.data.ativa !== true || session.data.clienteId !== identity.clientId || !client || client.data.bancaId !== ctx.env.BANCA_ID) {
       throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
     }
-    if (newPhoneIndex && newPhoneIndex.data.clienteId !== identity.clientId) throw new HttpError({ code: "phone_already_registered", message: "That phone number is already linked to another profile.", status: 409 });
+    const oldPhone = String(client.data.telefoneNormalizado ?? client.data.telefone ?? "");
+    const oldIndexIds = await Promise.all(phoneIndexCandidates(oldPhone).map((candidate) => hashCustomerPhone(ctx.env, candidate)));
+    const storedPhoneHash = String(client.data.telefoneHash ?? "");
+    const indexIds = [...new Set([...nextPhoneHashes, ...oldIndexIds, ...(storedPhoneHash ? [storedPhoneHash] : [])])];
+    const phoneIndexes = await Promise.all(indexIds.map((id) => transaction.get(`indiceTelefonesClientes/${id}`)));
+    const indexesById = new Map(indexIds.map((id, index) => [id, phoneIndexes[index]]));
+    if (nextPhoneHashes.some((id) => {
+      const index = indexesById.get(id);
+      return index && index.data.clienteId !== identity.clientId;
+    })) throw new HttpError({ code: "phone_already_registered", message: "That phone number is already linked to another profile.", status: 409 });
     const updated = {
       ...client.data,
       nome: name,
@@ -594,11 +664,14 @@ async function updateProfile(ctx: RequestContext): Promise<Response> {
       telefone: phone,
       telefoneNormalizado: phone,
       telefoneFinal: phone.slice(-4),
-      telefoneHash: nextPhoneHash,
+      telefoneHash: canonicalPhoneHash,
       atualizadoEm: now,
     };
-    if (oldPhoneHash !== nextPhoneHash) transaction.delete(`indiceTelefonesClientes/${oldPhoneHash}`);
-    transaction.set(`indiceTelefonesClientes/${nextPhoneHash}`, { bancaId: ctx.env.BANCA_ID, clienteId: identity.clientId, atualizadoEm: now }, newPhoneIndex ? {} : { mustNotExist: true });
+    for (const id of indexIds) {
+      if (id !== canonicalPhoneHash && indexesById.get(id)?.data.clienteId === identity.clientId) transaction.delete(`indiceTelefonesClientes/${id}`);
+    }
+    const canonicalIndex = indexesById.get(canonicalPhoneHash);
+    transaction.set(`indiceTelefonesClientes/${canonicalPhoneHash}`, { bancaId: ctx.env.BANCA_ID, clienteId: identity.clientId, atualizadoEm: now }, canonicalIndex ? {} : { mustNotExist: true });
     transaction.set(`clientes/${identity.clientId}`, updated);
     transaction.set(`sessoesClientes/${identity.sessionId}`, { ...session.data, ultimoAcesso: now });
     const response = { profile: { clientId: identity.clientId, name, phone, maskedPhone: maskPhone(phone) } };
@@ -608,15 +681,37 @@ async function updateProfile(ctx: RequestContext): Promise<Response> {
   return jsonResponse(ctx, result);
 }
 
+async function logoutClientSession(ctx: RequestContext): Promise<Response> {
+  await rateLimit(ctx, "client-write");
+  const authorization = ctx.request.headers.get("authorization") ?? "";
+  const match = authorization.match(/^Bearer\s+([A-Za-z0-9_-]{40,80})$/);
+  if (match) {
+    const sessionId = await hashClientSessionToken(ctx.env, match[1]);
+    const now = new Date().toISOString();
+    await ctx.db.transact(async (transaction) => {
+      const session = await transaction.get(`sessoesClientes/${sessionId}`);
+      if (!session || session.data.bancaId !== ctx.env.BANCA_ID || session.data.ativa !== true) return;
+      transaction.set(`sessoesClientes/${sessionId}`, { ...session.data, ativa: false, revogadaEm: now, ultimoAcesso: now });
+    });
+  }
+  // Logout is idempotent and does not reveal whether a token was recognized.
+  return jsonResponse(ctx, { revoked: true });
+}
+
 export async function handleClientRoute(ctx: RequestContext): Promise<Response | null> {
   const { pathname } = ctx.url;
   const { method } = ctx.request;
   if (method === "POST" && pathname === "/api/client/sessions") return createSession(ctx);
+  if (method === "POST" && pathname === "/api/client/sessions/logout") return logoutClientSession(ctx);
   if (method === "GET" && pathname === "/api/client/profile") return getProfile(ctx);
   if (method === "PATCH" && pathname === "/api/client/profile") return updateProfile(ctx);
   if (method === "GET" && pathname === "/api/client/reservations") return listReservations(ctx);
   if (method === "GET" && pathname === "/api/client/notifications") return listNotifications(ctx);
   if (method === "POST" && pathname === "/api/client/reservations") return createReservation(ctx);
+  const reservationDetailMatch = pathname.match(/^\/api\/client\/reservations\/([A-Za-z0-9_-]+)$/);
+  if (method === "GET" && reservationDetailMatch) return getReservationDetails(ctx, reservationDetailMatch[1]);
+  const notificationReadMatch = pathname.match(/^\/api\/client\/notifications\/([A-Za-z0-9_-]+)\/read$/);
+  if (method === "POST" && notificationReadMatch) return markClientNotificationRead(ctx, notificationReadMatch[1]);
 
   const cancelMatch = pathname.match(/^\/api\/client\/reservations\/([A-Za-z0-9_-]+)\/cancel$/);
   if (method === "POST" && cancelMatch) return cancelReservation(ctx, cancelMatch[1]);

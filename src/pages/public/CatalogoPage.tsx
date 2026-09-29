@@ -26,6 +26,7 @@ export function CatalogoPage() {
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
   const [failure, setFailure] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   const filters = useMemo<FiltrosCatalogo>(() => ({
     busca: query,
@@ -66,7 +67,7 @@ export function CatalogoPage() {
       });
     }, 180);
     return () => { active = false; window.clearTimeout(timeout); };
-  }, [filters]);
+  }, [filters, retry]);
 
   const visible = demo ? pesquisarLocalmente(items, filters) : items;
 
@@ -111,12 +112,12 @@ export function CatalogoPage() {
         <div className="catalog-filter-label"><SlidersHorizontal size={16} /> FILTRAR POR</div>
       </div>
       <div className="filter-row" role="group" aria-label="Filtrar por tipo">
-        {types.map((item) => <button type="button" key={item.value} className={`filter-pill${type === item.value ? ' is-selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}
+        {types.map((item) => <button type="button" key={item.value} aria-pressed={type === item.value} className={`filter-pill${type === item.value ? ' is-selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}
         <label className="availability-toggle"><input type="checkbox" checked={onlyAvailable} onChange={(event) => setOnlyAvailable(event.target.checked)} /><span>Disponíveis</span></label>
       </div>
       <div className="catalog-results-heading"><p>{loading ? 'Buscando títulos…' : `${visible.length} ${visible.length === 1 ? 'título' : 'títulos'}`}</p><span>Volume preservado como publicado</span></div>
-      {loading ? <div className="loading-block" aria-live="polite">Organizando as prateleiras <span className="loading-dots">···</span></div>
-        : failure ? <div className="empty-state"><h2>Não foi possível carregar o catálogo.</h2><p>Confira sua conexão e tente novamente em instantes.</p></div>
+      {loading ? <div className="loading-block" role="status" aria-live="polite" aria-busy="true">Organizando as prateleiras <span className="loading-dots">···</span></div>
+        : failure ? <div className="empty-state" role="alert"><h2>Não foi possível carregar o catálogo.</h2><p>Confira sua conexão e tente novamente em instantes.</p><Button variant="secondary" type="button" onClick={() => setRetry((attempt) => attempt + 1)}>Tentar novamente</Button></div>
           : visible.length ? <div className="product-grid">{visible.map((item, index) => <ProdutoCardTipografico key={item.itemReparteId} produto={item} index={index} />)}</div>
             : hasMore
               ? <div className="empty-state"><span className="eyebrow">CONTINUANDO A BUSCA</span><h2>Confira mais títulos.</h2><p>A busca continua nas próximas páginas do catálogo.</p></div>

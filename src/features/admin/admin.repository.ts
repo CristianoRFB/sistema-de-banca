@@ -83,6 +83,7 @@ export interface ReconciliationItemAdmin {
   quantityReturned: number | null;
   reserved: number;
   resolution?: string | null;
+  pending?: boolean;
   status: string;
 }
 
@@ -90,6 +91,16 @@ export interface ReconciliationAdmin {
   reparte: ReparteAdmin;
   collection: { id: string; status: string; plannedCollectionAt?: string | null } | null;
   items: ReconciliationItemAdmin[];
+}
+
+export interface AdminNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  createdAt: string | null;
+  read: boolean;
+  reservationId: string | null;
 }
 
 async function adminRequest<T>(user: User, path: string, init: RequestInit = {}) {
@@ -124,11 +135,20 @@ export const adminRepository = {
       listasPublicadas: count(raw.publishedLists),
     };
   },
-  lists: async (user: User, status?: string) => (await adminRequest<{ lists: ListaAdmin[] }>(user, `/lists${status ? `?status=${encodeURIComponent(status)}` : ''}`)).lists,
+  listsPage: async (user: User, status?: string, cursor?: string | null) => {
+    const query = new URLSearchParams({ limit: '25' });
+    if (status) query.set('status', status);
+    if (cursor) query.set('cursor', cursor);
+    return adminRequest<{ lists: ListaAdmin[]; page?: { nextCursor?: string | null } }>(user, `/lists?${query}`);
+  },
+  lists: async (user: User, status?: string) => (await adminRepository.listsPage(user, status)).lists,
   getList: (user: User, id: string) => adminRequest<ListaAdminCompleta>(user, `/lists/${encodeURIComponent(id)}`),
   createList: (user: User, input: unknown) => adminRequest<ListMutationResult>(user, '/lists', { ...jsonBody(input), headers: { 'Idempotency-Key': key() } }),
   updateList: (user: User, id: string, input: unknown) => adminRequest<ListMutationResult>(user, `/lists/${encodeURIComponent(id)}`, { ...jsonBody(input), method: 'PUT', headers: { 'Idempotency-Key': key() } }),
   publishList: (user: User, id: string) => adminRequest<ListMutationResult>(user, `/lists/${encodeURIComponent(id)}/publish`, { ...jsonBody({}), headers: { 'Idempotency-Key': key() } }),
+  archiveList: (user: User, id: string) => adminRequest<{ listId: string; status: string; alreadyArchived: boolean }>(user, `/lists/${encodeURIComponent(id)}/archive`, {
+    ...jsonBody({}), headers: { 'Idempotency-Key': key() },
+  }),
   reservationsPage: async (user: User, filters: { status?: string; date?: string; cursor?: string | null } = {}) => {
     const query = new URLSearchParams({ limit: '50' });
     if (filters.status) query.set('status', filters.status);
@@ -162,12 +182,35 @@ export const adminRepository = {
   withdraw: (user: User, id: string, items: Array<{ itemReservationId: string; quantity: number }>) => adminRequest<ReservaAdmin>(user, `/reservations/${encodeURIComponent(id)}/withdraw`, {
     ...jsonBody({ items }), headers: { 'Idempotency-Key': key() },
   }),
-  repartes: (user: User, status?: string) => adminRequest<{ repartes: ReparteAdmin[] }>(user, `/repartes${status ? `?status=${encodeURIComponent(status)}` : ''}`).then((result) => result.repartes),
+  cancelReservation: (user: User, id: string) => adminRequest<{ reservationId: string; status: string; releasedQuantity: number }>(user, `/reservations/${encodeURIComponent(id)}/cancel`, {
+    ...jsonBody({}), headers: { 'Idempotency-Key': key() },
+  }),
+  repartesPage: async (user: User, status?: string, cursor?: string | null) => {
+    const query = new URLSearchParams({ limit: '30' });
+    if (status) query.set('status', status);
+    if (cursor) query.set('cursor', cursor);
+    return adminRequest<{ repartes: ReparteAdmin[]; page?: { nextCursor?: string | null } }>(user, `/repartes?${query}`);
+  },
+  repartes: async (user: User, status?: string) => (await adminRepository.repartesPage(user, status)).repartes,
   reconciliation: (user: User, id: string) => adminRequest<ReconciliationAdmin>(user, `/repartes/${encodeURIComponent(id)}/reconciliation`),
   reconcile: (user: User, id: string, items: Array<{ itemReparteId: string; quantityFound: number; resolution?: string; reason?: string }>) => adminRequest<ReconciliationAdmin>(user, `/repartes/${encodeURIComponent(id)}/reconcile`, {
     ...jsonBody({ items }), headers: { 'Idempotency-Key': key() },
   }),
-  history: async (user: User, type: 'sales' | 'returns' | 'changes') => (await adminRequest<{ entries: unknown[] }>(user, `/histories?type=${type}&limit=50`)).entries,
+  historyPage: async (user: User, type: 'sales' | 'returns' | 'changes', cursor?: string | null) => {
+    const query = new URLSearchParams({ type, limit: '50' });
+    if (cursor) query.set('cursor', cursor);
+    const response = await adminRequest<{ entries: unknown[]; page?: { nextCursor?: string | null } }>(user, `/histories?${query}`);
+    return { entries: response.entries, nextCursor: response.page?.nextCursor ?? null };
+  },
+  history: async (user: User, type: 'sales' | 'returns' | 'changes') => (await adminRepository.historyPage(user, type)).entries,
+  notificationsPage: async (user: User, cursor?: string | null) => {
+    const query = new URLSearchParams({ limit: '30' });
+    if (cursor) query.set('cursor', cursor);
+    return adminRequest<{ notifications: AdminNotification[]; page?: { nextCursor?: string | null } }>(user, `/notifications?${query}`);
+  },
+  markNotificationRead: (user: User, id: string) => adminRequest<{ notificationId: string; read: boolean }>(user, `/notifications/${encodeURIComponent(id)}/read`, {
+    ...jsonBody({}),
+  }),
   getBanca: async (user: User): Promise<DadosBancaAdmin> => {
     const result = await adminRequest<{ profile: { name: string; phone: string; address: string; withdrawalToleranceDays: number; collectionSafetyMarginDays: number }; hours: Array<{ dayOfWeek: number; closed: boolean; opensAt: string | null; closesAt: string | null }> }>(user, '/banca');
     return {

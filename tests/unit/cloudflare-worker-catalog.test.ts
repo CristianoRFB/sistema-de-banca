@@ -140,7 +140,7 @@ const env: Bindings = {
   CLIENT_RATE_LIMITER: { limit: async ({ key }) => { rateLimitCalls.push(key); return { success: true }; } },
 };
 
-async function requestCatalog(db: CatalogFirestore, query: string): Promise<{ items: JsonObject[]; page: { limit: number; nextCursor: string | null; hasMore: boolean } }> {
+async function requestCatalog(db: CatalogFirestore, query: string): Promise<{ items: JsonObject[]; page: { limit: number; nextCursor: string | null; hasMore: boolean }; cacheControl: string | null }> {
   const request = new Request(`https://banca.example.test/api/public/catalog?${query}`);
   const context: RequestContext = {
     request,
@@ -152,7 +152,7 @@ async function requestCatalog(db: CatalogFirestore, query: string): Promise<{ it
   const response = await handlePublicRoute(context);
   if (!response) throw new Error('Expected the public catalog route to handle this request.');
   const payload = await response.json() as { data: { items: JsonObject[]; page: { limit: number; nextCursor: string | null; hasMore: boolean } } };
-  return payload.data;
+  return { ...payload.data, cacheControl: response.headers.get('cache-control') };
 }
 
 describe('Cloudflare Worker public catalog', () => {
@@ -209,5 +209,22 @@ describe('Cloudflare Worker public catalog', () => {
     expect(response).not.toBeNull();
     const payload = await response!.json() as { data: { item: JsonObject } };
     expect(payload.data.item).toMatchObject({ itemReparteId: 'stock-060', available: 2, status: 'AVAILABLE' });
+    expect(response!.headers.get('cache-control')).toBe('public, max-age=60, stale-while-revalidate=840');
+  });
+
+  it('allows short caching for public catalog results while keeping customer profile search private', async () => {
+    const catalog = await requestCatalog(new CatalogFirestore(), 'limit=1');
+    expect(catalog.cacheControl).toBe('public, max-age=60, stale-while-revalidate=840');
+
+    const request = new Request('https://banca.example.test/api/public/profile?name=Maria');
+    const response = await handlePublicRoute({
+      request,
+      url: new URL(request.url),
+      env,
+      db: new CatalogFirestore() as unknown as FirestoreRest,
+      corsOrigin: null,
+    });
+
+    expect(response?.headers.get('cache-control')).toBe('no-store');
   });
 });

@@ -37,8 +37,19 @@ function mapReservation(reservation: ReservationApi): ReservaCliente {
 
 export const reservaRepository = {
   async listMine(token: string): Promise<ReservaCliente[]> {
-    const response = await apiRequest<{ reservations: ReservationApi[] }>('/client/reservations', { headers: headers(token) });
-    return response.reservations.map(mapReservation);
+    return (await reservaRepository.listMinePage(token)).reservations;
+  },
+
+  async listMinePage(token: string, cursor?: string | null): Promise<{ reservations: ReservaCliente[]; nextCursor: string | null }> {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', cursor);
+    const response = await apiRequest<{ reservations: ReservationApi[]; page?: { nextCursor?: string | null } }>(`/client/reservations${params.size ? `?${params}` : ''}`, { headers: headers(token) });
+    return { reservations: response.reservations.map(mapReservation), nextCursor: response.page?.nextCursor ?? null };
+  },
+
+  async getMine(token: string, id: string): Promise<ReservaCliente> {
+    const response = await apiRequest<ReservationApi>(`/client/reservations/${encodeURIComponent(id)}`, { headers: headers(token) });
+    return mapReservation(response);
   },
 
   async create(token: string, input: { itens: Array<{ itemReparteId: string; quantidade: number }>; dataRetiradaPretendida: string; horarioAproximado?: string }): Promise<ReservaCliente> {

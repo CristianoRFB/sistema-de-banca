@@ -70,7 +70,23 @@ export function normalizeName(name: string): string {
 }
 
 export function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, "");
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("0055") && /^0055\d{10,11}$/.test(digits)) digits = digits.slice(2);
+  if (digits.startsWith("55") && /^55\d{10,11}$/.test(digits)) return digits;
+  if (/^\d{10,11}$/.test(digits)) return `55${digits}`;
+  return digits;
+}
+
+export function isBrazilianPhone(phone: string): boolean {
+  return /^55\d{10,11}$/.test(phone);
+}
+
+export function phoneIndexCandidates(phone: string): string[] {
+  const canonical = normalizePhone(phone);
+  if (!isBrazilianPhone(canonical)) return [canonical];
+  // Previous versions indexed national digits without the country code.
+  // Read both keys so existing profiles cannot be duplicated during rollout.
+  return [...new Set([canonical, canonical.slice(2)])];
 }
 
 export function maskPhone(phone: string): string {
@@ -92,7 +108,7 @@ export function allowedOrigin(request: Request, env: Bindings): string | null {
   return origin;
 }
 
-export async function rateLimit(ctx: RequestContext, scope: "public-search" | "client-session" | "client-write"): Promise<void> {
+export async function rateLimit(ctx: RequestContext, scope: "public-search" | "client-session" | "client-read" | "client-write"): Promise<void> {
   if (!ctx.env.CLIENT_RATE_LIMITER) {
     throw new HttpError({ code: "rate_limit_unavailable", message: "Client routes are temporarily unavailable.", status: 503 });
   }

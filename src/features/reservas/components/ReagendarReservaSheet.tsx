@@ -71,7 +71,7 @@ export function ReagendarReservaSheet({
       <p className="muted-copy">Escolha uma nova data dentro do funcionamento da banca. O prazo e os avisos serão recalculados.</p>
       <div className="date-shortcuts" role="group" aria-label="Sugestões de data">{suggestions.map(({ day, offset }) => {
         const value = localDate(day);
-        return <button key={value} className={`date-shortcut${date === value ? ' is-selected' : ''}`} type="button" onClick={() => setDate(value)}><span>{offset === 1 ? 'Amanhã' : `Em ${offset} dias`}</span><strong>{day.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}</strong><small>{day.toLocaleDateString('pt-BR', { weekday: 'short' })}</small></button>;
+        return <button key={value} className={`date-shortcut${date === value ? ' is-selected' : ''}`} type="button" aria-pressed={date === value} onClick={() => setDate(value)}><span>{offset === 1 ? 'Amanhã' : `Em ${offset} dias`}</span><strong>{day.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}</strong><small>{day.toLocaleDateString('pt-BR', { weekday: 'short' })}</small></button>;
       })}</div>
       <label className="field-label">Nova data<div className="field-with-icon"><CalendarDays size={17} /><Input type="date" value={date} min={localDate(new Date())} max={maxDate} onChange={(event) => setDate(event.target.value)} /></div></label>
       {date && <p className="selected-date"><Check size={15} /> Nova retirada em {new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}.</p>}

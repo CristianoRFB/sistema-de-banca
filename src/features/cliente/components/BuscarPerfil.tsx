@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, UserRound } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
-import { ApiError } from '../../../infra/browser/api-client';
 import { clienteRepository } from '../cliente.repository';
 import { salvarSessaoCliente } from '../../../infra/local-storage/cliente-session';
 import type { PerfilMascarado, SessaoCliente } from '../cliente.types';
+
+const PROFILE_CONFIRMATION_ERROR = 'Não foi possível confirmar o perfil. Revise nome e telefone ou fale com a banca.';
 
 export function BuscarPerfil({ onAuthenticated }: { onAuthenticated: (session: SessaoCliente) => void }) {
   const [name, setName] = useState('');
@@ -40,10 +41,8 @@ export function BuscarPerfil({ onAuthenticated }: { onAuthenticated: (session: S
       });
       salvarSessaoCliente(session);
       onAuthenticated(session);
-    } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'profile_session_exists'
-        ? 'Esse perfil já está vinculado a outro dispositivo. Use o dispositivo onde se cadastrou ou peça ajuda à banca para recuperar o acesso.'
-        : 'Não foi possível confirmar o telefone. Confira os números e tente de novo.');
+    } catch {
+      setError(PROFILE_CONFIRMATION_ERROR);
     } finally { setLoading(false); }
   }
 
@@ -57,7 +56,7 @@ export function BuscarPerfil({ onAuthenticated }: { onAuthenticated: (session: S
       {searched && <div className="form-stack">
         {matches.length ? <>
           <p className="muted-copy">Selecione seu perfil. O telefone fica mascarado nesta lista.</p>
-          <div className="profile-options">{matches.map((profile) => <button className={`profile-option${selected?.clienteId === profile.clienteId ? ' is-selected' : ''}`} type="button" key={profile.clienteId} onClick={() => setSelected(profile)}><span><strong>{profile.nome}</strong><small>{profile.telefoneMascarado}</small></span>{selected?.clienteId === profile.clienteId && <Check size={18} />}</button>)}</div>
+          <div className="profile-options">{matches.map((profile) => <button className={`profile-option${selected?.clienteId === profile.clienteId ? ' is-selected' : ''}`} type="button" key={profile.clienteId} aria-pressed={selected?.clienteId === profile.clienteId} onClick={() => setSelected(profile)}><span><strong>{profile.nome}</strong><small>{profile.telefoneMascarado}</small></span>{selected?.clienteId === profile.clienteId && <Check size={18} />}</button>)}</div>
         </> : <div className="notice-card"><span className="notice-card__mark">+</span><div><strong>Perfil ainda não encontrado</strong><p>Vamos criar seu acesso com esse nome e telefone.</p></div></div>}
         <label className="field-label">Telefone com DDD<Input autoComplete="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="(17) 99999-0000" /></label>
         <div className="button-row"><Button variant="ghost" onClick={() => { setSearched(false); setSelected(null); setError(''); }}><ArrowLeft size={16} /> Voltar</Button><Button disabled={loading || (matches.length > 0 && !selected)} onClick={continueWithProfile}>{loading ? 'Confirmando…' : 'Continuar'} <ArrowRight size={16} /></Button></div>

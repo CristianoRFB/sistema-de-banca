@@ -10,6 +10,7 @@ import { PreviewLista } from '../../features/listas/components/PreviewLista';
 import type { ImportedListRow } from '../../features/importacao/importacao.types';
 import type { ExportableList } from '../../features/exportacao/exportacao.types';
 import { adminRepository } from '../../features/admin/admin.repository';
+import { mapAdminItemsToImportedRows, toAdminListItemInput } from '../../features/listas/lista.mappers';
 import { useToast } from '../../components/ui/Toast';
 import { AdminLoadError, AdminLoading } from './AdminCommon';
 
@@ -33,23 +34,7 @@ export function RevisarListaPage() {
       const result = await adminRepository.getList(user, listaId);
       setFailed(false);
       setTitle(result.list.title); setStatus(result.list.status);
-      setRows(result.items.map((item, index) => ({
-        id: item.id,
-        line: index + 1,
-        title: item.title,
-        type: item.type,
-        volume: item.volume ?? null,
-        price: item.price ?? null,
-        quantity: item.quantity ?? null,
-        code: item.code ?? null,
-        publisher: item.publisher ?? null,
-        originalTitle: item.originalTitle ?? null,
-        returnDate: item.returnDate ?? null,
-        confidence: item.confidence ?? 1,
-        fieldConfidence: {},
-        issues: item.issues ?? [],
-        requiresReview: item.requiresReview ?? true,
-      })));
+      setRows(mapAdminItemsToImportedRows(result.items));
     } catch { setFailed(true); }
     finally { setLoading(false); }
   }, [user, listaId]);
@@ -57,12 +42,7 @@ export function RevisarListaPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
-  const payload = useMemo(() => ({ title, items: rows.map((row) => ({
-    title: row.title.trim(), volume: row.volume, price: row.price, quantity: row.quantity,
-    code: row.code, publisher: row.publisher, originalTitle: row.originalTitle,
-    returnDate: row.returnDate, type: row.type ?? 'MANGA', confidence: row.confidence,
-    fieldConfidence: row.fieldConfidence, issues: row.issues, requiresReview: row.requiresReview,
-  })) }), [title, rows]);
+  const payload = useMemo(() => ({ title, items: rows.map(toAdminListItemInput) }), [title, rows]);
 
   const save = useCallback(async () => {
     if (!user || !title.trim()) return false;

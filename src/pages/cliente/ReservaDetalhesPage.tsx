@@ -21,7 +21,7 @@ export function ReservaDetalhesPage() {
 
   const load = useCallback(async () => {
     if (!session || !reservaId) return;
-    try { setReservation((await reservaRepository.listMine(session.token)).find((item) => item.id === reservaId) ?? null); setError(false); }
+    try { setReservation(await reservaRepository.getMine(session.token, reservaId)); setError(false); }
     catch { setError(true); }
     finally { setLoading(false); }
   }, [session, reservaId]);

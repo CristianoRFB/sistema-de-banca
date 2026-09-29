@@ -28,11 +28,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{css,html,svg,webmanifest}'],
+        globPatterns: ['**/*.{css,html,js,mjs,svg,webmanifest}'],
         globIgnores: [
           'tesseract/**',
           'assets/exceljs*.js',
           'assets/pdf-*.js',
+          'assets/pdf.worker*.js',
+          'assets/pdf.worker*.mjs',
           'assets/jspdf*.js',
           'assets/html2canvas*.js',
           'assets/index.es-*.js',
@@ -43,6 +45,32 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
+          {
+            // Only public, read-only payloads are eligible. Client/admin responses and writes stay online-only.
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' &&
+              url.origin === self.location.origin &&
+              /^\/api\/public\/(?:banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'public-read-api-v1',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 120, maxAgeSeconds: 900 },
+              cacheableResponse: { statuses: [200] },
+              plugins: [{
+                cachedResponseWillBeUsed: async ({ cachedResponse }) => {
+                  if (!cachedResponse) return null;
+                  const headers = new Headers(cachedResponse.headers);
+                  headers.set('x-public-data-cache', 'fallback');
+                  return new Response(cachedResponse.body, {
+                    status: cachedResponse.status,
+                    statusText: cachedResponse.statusText,
+                    headers,
+                  });
+                },
+              }],
+            },
+          },
           {
             // Vite/Rolldown hashes make these URLs immutable and safe to cache at runtime.
             urlPattern: ({ url }) =>

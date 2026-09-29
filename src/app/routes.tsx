@@ -22,6 +22,7 @@ const RetiradasHojePage = lazy(() => import('../pages/admin/RetiradasHojePage').
 const RecolhimentosPage = lazy(() => import('../pages/admin/RecolhimentosPage').then(({ RecolhimentosPage: page }) => ({ default: page })));
 const ConferirRecolhimentoPage = lazy(() => import('../pages/admin/ConferirRecolhimentoPage').then(({ ConferirRecolhimentoPage: page }) => ({ default: page })));
 const HistoricoPage = lazy(() => import('../pages/admin/HistoricoPage').then(({ HistoricoPage: page }) => ({ default: page })));
+const NotificacoesAdminPage = lazy(() => import('../pages/admin/NotificacoesAdminPage').then(({ NotificacoesAdminPage: page }) => ({ default: page })));
 const PerfilBancaPage = lazy(() => import('../pages/admin/PerfilBancaPage').then(({ PerfilBancaPage: page }) => ({ default: page })));
 const ConfiguracoesPage = lazy(() => import('../pages/admin/ConfiguracoesPage').then(({ ConfiguracoesPage: page }) => ({ default: page })));
 
@@ -56,6 +57,7 @@ export function AppRoutes() {
         <Route path="recolhimentos" element={<RecolhimentosPage />} />
         <Route path="recolhimentos/:reparteId" element={<ConferirRecolhimentoPage />} />
         <Route path="historico" element={<HistoricoPage />} />
+        <Route path="notificacoes" element={<NotificacoesAdminPage />} />
         <Route path="perfil" element={<PerfilBancaPage />} />
         <Route path="configuracoes" element={<ConfiguracoesPage />} />
       </Route>

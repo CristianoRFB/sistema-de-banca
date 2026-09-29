@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Bell, BookOpen, Boxes, Clock3, History, LayoutDashboard, LogOut, Settings2, Store, UserRound } from 'lucide-react';
 import { useAdminAuth } from '../providers';
 import { logoutAdmin } from '../../infra/firebase/auth';
@@ -9,6 +9,7 @@ const adminLinks = [
   { to: '/admin/reservas', label: 'Reservas', mobileLabel: 'Reservas', icon: Bell },
   { to: '/admin/retiradas', label: 'Retiradas hoje', mobileLabel: 'Retirada', icon: Clock3 },
   { to: '/admin/recolhimentos', label: 'Recolhimentos', mobileLabel: 'Lotes', icon: Boxes },
+  { to: '/admin/notificacoes', label: 'Avisos da equipe', mobileLabel: 'Avisos', icon: Bell },
   { to: '/admin/historico', label: 'Histórico', mobileLabel: 'Histórico', icon: History },
   { to: '/admin/perfil', label: 'Perfil da banca', mobileLabel: 'Perfil', icon: Store },
   { to: '/admin/configuracoes', label: 'Configurações', mobileLabel: 'Ajustes', icon: Settings2 },
@@ -29,7 +30,7 @@ export function AdminShell() {
         <button className="admin-logout" type="button" onClick={() => void logout()}><LogOut size={17} /> Sair</button>
         <NavLink className="admin-back" to="/"><ArrowLeft size={15} /> Voltar ao site</NavLink>
       </aside>
-      <div className="admin-main"><header className="admin-topbar"><span className="eyebrow">BANCA ANA MARIA · OPERAÇÃO</span><span className="admin-topbar__status"><span className="status-dot" /> PAINEL ADMINISTRATIVO</span></header><main className="admin-content"><Outlet /></main></div>
+      <div className="admin-main"><header className="admin-topbar"><span className="eyebrow">BANCA ANA MARIA · OPERAÇÃO</span><span className="admin-topbar__status"><span className="status-dot" /> PAINEL ADMINISTRATIVO</span><div className="admin-topbar__mobile-actions"><Link className="admin-topbar__action" to="/" aria-label="Voltar ao site público"><ArrowLeft size={15} /> Site</Link><button className="admin-topbar__action" type="button" onClick={() => void logout()} aria-label="Sair do painel"><LogOut size={15} /> Sair</button></div></header><main className="admin-content"><Outlet /></main></div>
       <nav className="admin-mobile-nav" aria-label="Navegação administrativa no celular">{adminLinks.map(({ to, label, mobileLabel, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} title={label} className={({ isActive }) => isActive ? 'is-active' : ''}><Icon size={18} /><span>{mobileLabel}</span></NavLink>)}</nav>
     </div>
   );
