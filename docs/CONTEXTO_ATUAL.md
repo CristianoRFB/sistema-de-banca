@@ -7,7 +7,7 @@ Este arquivo é memória operacional do desenvolvimento. O agente deve atualizá
 ## Estado em 2026-09-29 — implementação e auditoria
 
 - O scaffold inicial descrito abaixo foi preenchido: aplicação React/Vite mobile-first, autenticação administrativa Firebase, Worker Cloudflare, camada de domínio/repositórios, catálogo e reservas públicas, operação administrativa de listas/retiradas/recolhimentos, importação local, geração de relatórios e PWA estão implementados no repositório.
-- Repositório oficial e projeto Firebase seguem `CristianoRFB/sistema-de-banca` e `banca-88851`. A implementação está na branch `main`; a revisão de Wrangler abaixo foi aplicada após o commit integrado e também será registrada na branch.
+- Repositório oficial e projeto Firebase seguem `CristianoRFB/sistema-de-banca` e `banca-88851`. A implementação está na branch `main`; a revisão de Wrangler abaixo foi aplicada após o commit integrado e está registrada na branch.
 - O browser acessa o Firestore apenas pelo Worker. As regras Firestore continuam `deny all`; o Worker usa credencial de serviço mantida como segredo Cloudflare. A V1 não usa Storage.
 - A sessão do cliente é local e opaca, expira após 30 dias e renova em atividade antes de expirar. Para impedir takeover por quem conhece nome e telefone, criar sessão para um telefone já vinculado exige recuperação assistida pela banca. Não há OTP/e-mail exigido na UX.
 - O catálogo público agora pagina resultados depois de aplicar busca por título/volume/editora, tipo e disponibilidade, calcula estoque em tempo real, valida cursores assinados e aplica rate limit. Cada requisição pode examinar até 200 itens de catálogo; resultados seguintes continuam pelo cursor.
