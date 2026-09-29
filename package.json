@@ -11,7 +11,9 @@
     "provision:admin": "node scripts/provision-admin.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker:typecheck": "tsc -p cloudflare/worker/tsconfig.json"
+    "worker:typecheck": "tsc -p cloudflare/worker/tsconfig.json",
+    "worker:types": "wrangler types --config cloudflare/worker/wrangler.toml cloudflare/worker/worker-configuration.d.ts --strict-vars=false && node scripts/normalize-worker-types.mjs",
+    "worker:dev": "wrangler dev --config cloudflare/worker/wrangler.toml"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
@@ -42,7 +44,8 @@
     "typescript-eslint": "^8.71.0",
     "vite": "^8.3.1",
     "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "wrangler": "4.143.1"
   },
   "overrides": {
     "uuid": "^11.1.1"

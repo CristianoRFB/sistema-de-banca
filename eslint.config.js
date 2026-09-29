@@ -4,7 +4,14 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import { globalIgnores } from 'eslint/config';
 
 export default tseslint.config(
-  globalIgnores(['dist/**', 'coverage/**', 'node_modules/**', '.wrangler/**', 'public/tesseract/**']),
+  globalIgnores([
+    'dist/**',
+    'coverage/**',
+    'node_modules/**',
+    '.wrangler/**',
+    'public/tesseract/**',
+    'cloudflare/worker/worker-configuration.d.ts',
+  ]),
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

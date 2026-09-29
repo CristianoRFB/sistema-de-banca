@@ -10,9 +10,13 @@ CORS_ORIGINS = "https://SEU_DOMINIO_FINAL"
 # After assigning the custom domain, route only API paths through this Worker.
 # routes = [{ pattern = "SEU_DOMINIO_FINAL/api/*", zone_name = "SEU_DOMINIO_FINAL" }]
 
+[secrets]
+required = ["FIREBASE_SERVICE_ACCOUNT_JSON", "CLIENT_SESSION_PEPPER"]
+
 [[ratelimits]]
 name = "CLIENT_RATE_LIMITER"
-namespace_id = "SUBSTITUA_PELO_NAMESPACE_ID_PROVISIONADO"
+# Replace with a unique positive integer string for your Cloudflare account.
+namespace_id = "1001"
 
   [ratelimits.simple]
   limit = 60

@@ -1,15 +1,4 @@
-export interface RateLimitBinding {
-  limit(options: { key: string }): Promise<{ success: boolean }>;
-}
-
-export interface Bindings {
-  FIREBASE_PROJECT_ID: string;
-  BANCA_ID: string;
-  FIREBASE_SERVICE_ACCOUNT_JSON: string;
-  CLIENT_SESSION_PEPPER: string;
-  CORS_ORIGINS: string;
-  CLIENT_RATE_LIMITER?: RateLimitBinding;
-}
+export type Bindings = Env;
 
 export type JsonObject = Record<string, unknown>;
 
