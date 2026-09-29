@@ -2,6 +2,7 @@ import { apiRequest, jsonBody } from '../../infra/browser/api-client';
 import type { ReservaCliente } from '../cliente/cliente.types';
 
 const headers = (token: string): HeadersInit => ({ Authorization: `Bearer ${token}` });
+const idempotentHeaders = (token: string): HeadersInit => ({ ...headers(token), 'Idempotency-Key': crypto.randomUUID() });
 
 interface ReservationApi {
   id: string;
@@ -45,19 +46,19 @@ export const reservaRepository = {
       items: input.itens.map((item) => ({ itemReparteId: item.itemReparteId, quantity: item.quantidade })),
       desiredDate: input.dataRetiradaPretendida,
       ...(input.horarioAproximado ? { desiredTime: input.horarioAproximado } : {}),
-    }), headers: headers(token) });
+    }), headers: idempotentHeaders(token) });
     return mapReservation(result);
   },
 
   cancel(token: string, reservaId: string): Promise<void> {
-    return apiRequest<void>(`/client/reservations/${encodeURIComponent(reservaId)}/cancel`, { ...jsonBody({}), headers: headers(token) });
+    return apiRequest<void>(`/client/reservations/${encodeURIComponent(reservaId)}/cancel`, { ...jsonBody({}), headers: idempotentHeaders(token) });
   },
 
   async setIntent(token: string, reservaId: string, intencao: 'VOU_BUSCAR' | 'ESTOU_INDO' | 'NAO_VOU'): Promise<ReservaCliente> {
     const result = await apiRequest<ReservationApi>(`/client/reservations/${encodeURIComponent(reservaId)}/intent`, {
       method: 'PATCH',
-      headers: { ...headers(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pickupIntent: intencao }),
+      headers: { ...idempotentHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: intencao }),
     });
     return mapReservation(result);
   },

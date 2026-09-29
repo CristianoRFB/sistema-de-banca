@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ProdutoCardTipografico } from '../../features/catalogo/components/ProdutoCardTipografico';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
@@ -18,6 +19,10 @@ export function CatalogoPage() {
   const [type, setType] = useState<FiltrosCatalogo['tipo']>('TODOS');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [items, setItems] = useState<ProdutoCatalogo[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
   const [failure, setFailure] = useState(false);
@@ -31,30 +36,63 @@ export function CatalogoPage() {
 
   useEffect(() => {
     const q = filters.busca.trim();
+    let active = true;
     const timeout = window.setTimeout(() => {
       setLoading(true);
       setFailure(false);
+      setLoadMoreFailed(false);
+      setHasMore(false);
+      setNextCursor(null);
       catalogoRepository.list({ ...filters, busca: q }).then((page) => {
+        if (!active) return;
         setItems(page.itens);
+        setNextCursor(page.proximoCursor);
+        setHasMore(page.temMais);
         setDemo(false);
-        setLoading(false);
       }).catch(async () => {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.DEV && active) {
           const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
+          if (!active) return;
           setItems(demoCatalogo);
+          setNextCursor(null);
+          setHasMore(false);
           setDemo(true);
-          setFailure(false);
-        } else {
+        } else if (active) {
           setItems([]);
           setFailure(true);
         }
-        setLoading(false);
+      }).finally(() => {
+        if (active) setLoading(false);
       });
     }, 180);
-    return () => window.clearTimeout(timeout);
+    return () => { active = false; window.clearTimeout(timeout); };
   }, [filters]);
 
-  const visible = pesquisarLocalmente(items, filters);
+  const visible = demo ? pesquisarLocalmente(items, filters) : items;
+
+  async function loadMore() {
+    if (!nextCursor || !hasMore || loading || loadingMore) return;
+    setLoadingMore(true);
+    setLoadMoreFailed(false);
+    try {
+      const page = await catalogoRepository.list(filters, nextCursor);
+      setItems((current) => {
+        const currentIds = new Set(current.map((item) => item.itemReparteId));
+        const newItems = page.itens.filter((item) => {
+          if (currentIds.has(item.itemReparteId)) return false;
+          currentIds.add(item.itemReparteId);
+          return true;
+        });
+        return [...current, ...newItems];
+      });
+      setNextCursor(page.proximoCursor);
+      setHasMore(page.temMais);
+    } catch {
+      setLoadMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function changeQuery(value: string) {
     setQuery(value);
@@ -80,7 +118,11 @@ export function CatalogoPage() {
       {loading ? <div className="loading-block" aria-live="polite">Organizando as prateleiras <span className="loading-dots">···</span></div>
         : failure ? <div className="empty-state"><h2>Não foi possível carregar o catálogo.</h2><p>Confira sua conexão e tente novamente em instantes.</p></div>
           : visible.length ? <div className="product-grid">{visible.map((item, index) => <ProdutoCardTipografico key={item.itemReparteId} produto={item} index={index} />)}</div>
-            : <div className="empty-state"><span className="eyebrow">NENHUM TÍTULO ENCONTRADO</span><h2>Tente outra busca.</h2><p>Revise o título, volume ou filtro escolhido.</p><button type="button" className="text-button" onClick={() => { setType('TODOS'); setOnlyAvailable(false); changeQuery(''); }}>Limpar filtros</button></div>}
+            : hasMore
+              ? <div className="empty-state"><span className="eyebrow">CONTINUANDO A BUSCA</span><h2>Confira mais títulos.</h2><p>A busca continua nas próximas páginas do catálogo.</p></div>
+              : <div className="empty-state"><span className="eyebrow">NENHUM TÍTULO ENCONTRADO</span><h2>Tente outra busca.</h2><p>Revise o título, volume ou filtro escolhido.</p><button type="button" className="text-button" onClick={() => { setType('TODOS'); setOnlyAvailable(false); changeQuery(''); }}>Limpar filtros</button></div>}
+      {loadMoreFailed && <p className="form-error" role="alert">Não foi possível carregar a próxima página.</p>}
+      {!loading && !failure && hasMore && <div className="catalog-load-more"><Button variant="secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Carregando…' : loadMoreFailed ? 'Tentar novamente' : 'Carregar mais títulos'}</Button></div>}
     </div>
   );
 }

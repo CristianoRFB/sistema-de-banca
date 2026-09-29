@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handleClientRoute } from "../../cloudflare/worker/src/routes/client";
 import { FirestoreRest, TransactionConflict } from "../../cloudflare/worker/src/firebase/firestore-rest";
-import { hashClientSessionToken } from "../../cloudflare/worker/src/security";
+import { getClientIdentity, hashClientSessionToken, hashCustomerPhone, verifyClientSessionSignature } from "../../cloudflare/worker/src/security";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
 
 type StoredDocument = FirestoreDocument & { version: number };
@@ -188,7 +188,7 @@ async function createContext(db: InMemoryFirestore, path: string, key: string): 
   if (!db.documents.has(`sessoesClientes/${sessionId}`)) {
     db.seed(`sessoesClientes/${sessionId}`, {
       bancaId: bankId,
-      clienteId,
+      clienteId: clientId,
       ativa: true,
       expiraEm: new Date(Date.now() + 86_400_000).toISOString(),
     });
@@ -205,6 +205,38 @@ async function createContext(db: InMemoryFirestore, path: string, key: string): 
     body: path === "/api/client/reservations"
       ? JSON.stringify({ desiredDate: nextOpenDate(), desiredTime: "12:00", items: [{ itemReparteId: stockId, quantity: 1 }] })
       : "{}",
+  });
+  return { request, url: new URL(request.url), env, db, corsOrigin: null };
+}
+
+async function createRouteContext(
+  db: InMemoryFirestore,
+  path: string,
+  options: { method: string; body: JsonObject; key: string; authenticated?: boolean },
+): Promise<RequestContext> {
+  const env = testEnv();
+  const headers = new Headers({
+    "content-type": "application/json",
+    "idempotency-key": options.key,
+    "cf-connecting-ip": "192.0.2.2",
+  });
+  if (options.authenticated !== false) {
+    const sessionId = await hashClientSessionToken(env, clientToken);
+    if (!db.documents.has(`sessoesClientes/${sessionId}`)) {
+      db.seed(`sessoesClientes/${sessionId}`, {
+        bancaId: bankId,
+        clienteId: clientId,
+        ativa: true,
+        expiraEm: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      db.seed(`clientes/${clientId}`, { bancaId: bankId, ativo: true, nome: "Ana Maria", telefoneFinal: "1234" });
+    }
+    headers.set("authorization", `Bearer ${clientToken}`);
+  }
+  const request = new Request(`https://banca.example.test${path}`, {
+    method: options.method,
+    headers,
+    body: JSON.stringify(options.body),
   });
   return { request, url: new URL(request.url), env, db, corsOrigin: null };
 }
@@ -247,7 +279,7 @@ function seedPublishedStock(db: InMemoryFirestore, received = 1, reserved = 0): 
   });
   db.seed("itensLista/catalog-row-1", {
     bancaId: bankId,
-    listaId,
+    listaId: listId,
     itemReparteId: stockId,
     tituloExibicao: "Revista de teste",
     volumeExibicao: null,
@@ -282,6 +314,11 @@ describe("Cloudflare Worker reservation transactions", () => {
     const responses = [first, second].sort((a, b) => a.status - b.status);
 
     expect(responses.map((response) => response.status)).toEqual([201, 409]);
+    expect(responses[0].payload.data).toMatchObject({
+      id: expect.any(String),
+      status: "ATIVA",
+      items: [{ itemReparteId: stockId, title: "Revista de teste", quantity: 1 }],
+    });
     expect((responses[1].payload.error as JsonObject).code).toBe("insufficient_stock");
     expect(db.documents.get(`itensReparte/${stockId}`)?.data.quantidadeReservada).toBe(1);
     expect(db.documents.get("itensLista/catalog-row-1")?.data.availableUnits).toBe(0);
@@ -319,5 +356,97 @@ describe("Cloudflare Worker reservation transactions", () => {
     expect([...db.documents.keys()].some((path) => path.startsWith("reservas/"))).toBe(false);
     expect([...db.documents.keys()].some((path) => path.startsWith("itensReserva/"))).toBe(false);
     expect([...db.documents.keys()].some((path) => path.startsWith("movimentacoesEstoque/"))).toBe(false);
+  });
+
+  it("updates a reservation intent using the documented input and returns the complete reservation", async () => {
+    const db = new InMemoryFirestore(testEnv());
+    const reservationId = "reservation-intent-1";
+    db.seed(`reservas/${reservationId}`, {
+      bancaId: bankId,
+      clienteId: clientId,
+      status: "ATIVA",
+      criadaEm: new Date().toISOString(),
+      dataRetiradaPretendida: new Date(Date.now() + 86_400_000).toISOString(),
+      horarioAproximado: "12:00",
+      expiraEm: new Date(Date.now() + 172_800_000).toISOString(),
+      intencaoRetirada: "SEM_RESPOSTA",
+    });
+    db.seed("itensReserva/reservation-item-1", {
+      bancaId: bankId,
+      clienteId: clientId,
+      reservaId: reservationId,
+      itemReparteId: stockId,
+      produtoId: "product-1",
+      tituloSnapshot: "Revista de teste",
+      volumeSnapshot: "02",
+      quantidade: 2,
+      quantidadeOriginal: 2,
+      status: "RESERVADO",
+    });
+
+    const response = await invoke(await createRouteContext(db, `/api/client/reservations/${reservationId}/intent`, {
+      method: "PATCH",
+      body: { intent: "ESTOU_INDO" },
+      key: "intent-request-0001",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.payload.data).toMatchObject({
+      id: reservationId,
+      status: "ATIVA",
+      pickupIntent: "ESTOU_INDO",
+      items: [{ itemReparteId: stockId, title: "Revista de teste", quantity: 2 }],
+    });
+  });
+
+  it("does not issue a new session for a profile already claimed on another device", async () => {
+    const env = testEnv();
+    const db = new InMemoryFirestore(env);
+    const phone = "5517999991234";
+    const phoneHash = await hashCustomerPhone(env, phone);
+    db.seed(`bancas/${bankId}`, { ativo: true });
+    db.seed("clientes/existing-client", {
+      bancaId: bankId,
+      ativo: true,
+      nomeNormalizado: "ana maria",
+      telefone: phone,
+    });
+    db.seed(`indiceTelefonesClientes/${phoneHash}`, { bancaId: bankId, clienteId: "existing-client" });
+
+    const response = await invoke(await createRouteContext(db, "/api/client/sessions", {
+      method: "POST",
+      body: { name: "Ana Maria", phone },
+      key: "session-request-0001",
+      authenticated: false,
+    }));
+
+    expect(response.status).toBe(409);
+    expect((response.payload.error as JsonObject).code).toBe("profile_session_exists");
+    expect([...db.documents.keys()].filter((path) => path.startsWith("sessoesClientes/")).sort()).toEqual([]);
+  });
+
+  it("renews a valid client session before expiry and verifies scoped cursor HMACs", async () => {
+    const env = testEnv();
+    const db = new InMemoryFirestore(env);
+    const sessionId = await hashClientSessionToken(env, clientToken);
+    db.seed(`sessoesClientes/${sessionId}`, {
+      bancaId: bankId,
+      clienteId: clientId,
+      ativa: true,
+      expiraEm: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    });
+    db.seed(`clientes/${clientId}`, { bancaId: bankId, ativo: true, nome: "Ana Maria" });
+    const request = new Request("https://banca.example.test/api/client/profile", {
+      headers: { authorization: `Bearer ${clientToken}` },
+    });
+    const ctx: RequestContext = { request, url: new URL(request.url), env, db, corsOrigin: null };
+
+    await getClientIdentity(ctx);
+
+    const renewedExpiry = Date.parse(String(db.documents.get(`sessoesClientes/${sessionId}`)?.data.expiraEm));
+    expect(renewedExpiry).toBeGreaterThan(Date.now() + 29 * 86_400_000);
+    const signature = await hashClientSessionToken(env, "admin-cursor:v2:scope:value:id");
+    expect(await verifyClientSessionSignature(env, "admin-cursor:v2:scope:value:id", signature)).toBe(true);
+    expect(await verifyClientSessionSignature(env, "admin-cursor:v2:other-scope:value:id", signature)).toBe(false);
   });
 });

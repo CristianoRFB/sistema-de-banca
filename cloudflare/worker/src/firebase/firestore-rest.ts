@@ -336,14 +336,27 @@ export class FirestoreRest {
       try {
         const result = await operation(transaction);
         if (transaction.hasWrites) await transaction.commit();
-        else await this.rollback(transaction.transactionId);
+        else await this.rollbackIgnoringFailure(transaction.transactionId);
         return result;
       } catch (error) {
-        if (error instanceof TransactionConflict && attempt < retries - 1) continue;
+        await this.rollbackIgnoringFailure(transaction.transactionId);
+        if (error instanceof TransactionConflict) {
+          if (attempt < retries - 1) continue;
+          throw new HttpError({ code: "concurrent_update", message: "The record changed concurrently. Retry the request.", status: 409 });
+        }
         throw error;
       }
     }
     throw new HttpError({ code: "concurrent_update", message: "The record changed concurrently. Retry the request.", status: 409 });
+  }
+
+  private async rollbackIgnoringFailure(transactionId: string): Promise<void> {
+    try {
+      await this.rollback(transactionId);
+    } catch {
+      // A failed operation may already have aborted the transaction. Keep the
+      // operation's original error (or read-only result) authoritative.
+    }
   }
 
   async rollback(transactionId: string): Promise<void> {

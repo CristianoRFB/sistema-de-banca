@@ -14,7 +14,7 @@ interface CatalogItemApi {
   publishedAt: string | null;
   reservationCutoffAt: string | null;
   plannedCollectionAt: string | null;
-  status: string;
+  status: 'AVAILABLE' | 'SOLD_OUT';
 }
 
 function mapCatalogItem(item: CatalogItemApi): ProdutoCatalogo {
@@ -33,13 +33,17 @@ function mapCatalogItem(item: CatalogItemApi): ProdutoCatalogo {
     publicadoEm: item.publishedAt,
     dataFimReservas: item.reservationCutoffAt,
     dataRecolhimentoPrevista: item.plannedCollectionAt,
-    permiteReserva: item.status === 'PUBLICADA' && item.available > 0 && !cutoffPassed,
+    permiteReserva: item.status === 'AVAILABLE' && item.available > 0 && !cutoffPassed,
   };
 }
 
 interface CatalogResponseApi {
   items: CatalogItemApi[];
-  page: { nextCursor: string | null; limit?: number; hasMore?: boolean };
+  page: { nextCursor: string | null; limit: number; hasMore: boolean };
+}
+
+interface CatalogDetailResponseApi {
+  item: CatalogItemApi;
 }
 
 export const catalogoRepository = {
@@ -54,10 +58,15 @@ export const catalogoRepository = {
     });
     if (cursor) params.set('cursor', cursor);
     const response = await apiRequest<CatalogResponseApi>(`/public/catalog?${params}`);
-    return { itens: response.items.map(mapCatalogItem), proximoCursor: response.page.nextCursor };
+    return {
+      itens: response.items.map(mapCatalogItem),
+      proximoCursor: response.page.nextCursor,
+      temMais: response.page.hasMore,
+    };
   },
 
   async get(itemReparteId: string): Promise<ProdutoCatalogo> {
-    return mapCatalogItem(await apiRequest<CatalogItemApi>(`/public/catalog/${encodeURIComponent(itemReparteId)}`));
+    const response = await apiRequest<CatalogDetailResponseApi>(`/public/catalog/${encodeURIComponent(itemReparteId)}`);
+    return mapCatalogItem(response.item);
   },
 };

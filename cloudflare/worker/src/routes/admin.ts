@@ -1,6 +1,6 @@
 import { andFilters, catalogRowsForStocks, compare, eq, firestoreString, jsonResponse, parseLimit, prepareIdempotency, query, readJsonBody, saveIdempotency, setCatalogAvailability } from "../api";
 import { assertInventoryValid, defaultOpeningHours, isPlainObject, localDateString, reservationAvailability, requirePositiveInteger, requireString } from "../domain";
-import { hashClientSessionToken, maskPhone, normalizeName, requireAdmin } from "../security";
+import { hashClientSessionToken, maskPhone, normalizeName, requireAdmin, verifyClientSessionSignature } from "../security";
 import type { AdminIdentity, FirestoreDocument, JsonObject, RequestContext } from "../types";
 import { HttpError } from "../types";
 
@@ -35,9 +35,9 @@ function weekdayIndex(value: unknown, fallback: string): number | null {
   return Number.isInteger(id) && id >= 0 && id <= 6 ? id : null;
 }
 
-function pageToken(ctx: RequestContext, date: string, id: string): Promise<string> {
-  return hashClientSessionToken(ctx.env, `admin-cursor:v1:${date}:${id}`).then((sig) => {
-    const payload = JSON.stringify({ date, id, sig });
+function pageToken(ctx: RequestContext, scope: string, sortValue: string, id: string): Promise<string> {
+  return hashClientSessionToken(ctx.env, `admin-cursor:v2:${scope}:${sortValue}:${id}`).then((sig) => {
+    const payload = JSON.stringify({ scope, sortValue, id, sig });
     const bytes = new TextEncoder().encode(payload);
     let binary = "";
     for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -45,21 +45,21 @@ function pageToken(ctx: RequestContext, date: string, id: string): Promise<strin
   });
 }
 
-async function readPageToken(ctx: RequestContext, value: string | null): Promise<{ date: string; id: string } | null> {
+async function readPageToken(ctx: RequestContext, value: string | null, scope: string): Promise<{ sortValue: string; id: string } | null> {
   if (!value) return null;
   if (value.length > 512 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new HttpError({ code: "invalid_cursor", message: "cursor is invalid.", status: 400 });
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
-  let decoded: { date?: unknown; id?: unknown; sig?: unknown };
-  try { decoded = JSON.parse(atob(base64)) as { date?: unknown; id?: unknown; sig?: unknown }; } catch {
+  let decoded: { scope?: unknown; sortValue?: unknown; id?: unknown; sig?: unknown };
+  try { decoded = JSON.parse(atob(base64)) as { scope?: unknown; sortValue?: unknown; id?: unknown; sig?: unknown }; } catch {
     throw new HttpError({ code: "invalid_cursor", message: "cursor is invalid.", status: 400 });
   }
-  if (typeof decoded.date !== "string" || typeof decoded.id !== "string" || typeof decoded.sig !== "string" || !validDocumentId(decoded.id)) {
+  if (decoded.scope !== scope || typeof decoded.sortValue !== "string" || typeof decoded.id !== "string" || typeof decoded.sig !== "string" || !validDocumentId(decoded.id)) {
     throw new HttpError({ code: "invalid_cursor", message: "cursor is invalid.", status: 400 });
   }
-  if (decoded.sig !== await hashClientSessionToken(ctx.env, `admin-cursor:v1:${decoded.date}:${decoded.id}`)) {
+  if (!await verifyClientSessionSignature(ctx.env, `admin-cursor:v2:${scope}:${decoded.sortValue}:${decoded.id}`, decoded.sig)) {
     throw new HttpError({ code: "invalid_cursor", message: "cursor is invalid.", status: 400 });
   }
-  return { date: decoded.date, id: decoded.id };
+  return { sortValue: decoded.sortValue, id: decoded.id };
 }
 
 function itemReservationIdempotencyBody(body: JsonObject): Array<{ itemReservationId: string; quantity: number }> {
@@ -76,17 +76,31 @@ function itemReservationIdempotencyBody(body: JsonObject): Array<{ itemReservati
   });
 }
 
-async function getAdminReservations(ctx: RequestContext): Promise<Response> {
+export async function getAdminReservations(ctx: RequestContext): Promise<Response> {
   const { searchParams } = ctx.url;
   const limit = parseLimit(searchParams.get("limit"), 25, 50);
   const status = searchParams.get("status")?.trim().toUpperCase();
+  const date = searchParams.get("date")?.trim() ?? "";
   const allowedStatuses = new Set(["ATIVA", "PARCIALMENTE_RETIRADA", "CONCLUIDA", "CANCELADA", "EXPIRADA"]);
   if (status && !allowedStatuses.has(status)) throw new HttpError({ code: "invalid_status", message: "status is invalid.", status: 400 });
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError({ code: "invalid_date", message: "date must use YYYY-MM-DD format.", status: 400 });
+  const dateStart = date ? new Date(`${date}T00:00:00-03:00`) : null;
+  if (dateStart && (!Number.isFinite(dateStart.getTime()) || dateStart.toISOString().slice(0, 10) !== date)) {
+    throw new HttpError({ code: "invalid_date", message: "date must be a valid calendar date.", status: 400 });
+  }
+  const dateEnd = dateStart ? new Date(dateStart.getTime() + 86_400_000) : null;
+  const scope = `reservations:v2:${date || "all"}:${status || "all"}`;
   const filters = [eq("bancaId", firestoreString(ctx.env.BANCA_ID))];
-  if (status) filters.push(eq("status", firestoreString(status)));
-  const cursor = await readPageToken(ctx, searchParams.get("cursor"));
-  const orderBy = [{ field: { fieldPath: "criadaEm" }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
-  const startAt = cursor ? { values: [firestoreString(cursor.date), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/reservas/${cursor.id}` }], before: false } : undefined;
+  if (date) {
+    filters.push({ field: { fieldPath: "status" }, op: "IN", value: { arrayValue: { values: [firestoreString("ATIVA"), firestoreString("PARCIALMENTE_RETIRADA")] } } });
+    filters.push(compare("dataRetiradaPretendida", "GREATER_THAN_OR_EQUAL", firestoreString(dateStart!.toISOString())));
+    filters.push(compare("dataRetiradaPretendida", "LESS_THAN", firestoreString(dateEnd!.toISOString())));
+  } else if (status) filters.push(eq("status", firestoreString(status)));
+  const sortField = date ? "dataRetiradaPretendida" : "criadaEm";
+  const sortDirection = date ? "ASCENDING" : "DESCENDING";
+  const cursor = await readPageToken(ctx, searchParams.get("cursor"), scope);
+  const orderBy = [{ field: { fieldPath: sortField }, direction: sortDirection }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
+  const startAt = cursor ? { values: [firestoreString(cursor.sortValue), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/reservas/${cursor.id}` }], before: false } : undefined;
   const documents = await ctx.db.query("reservas", query("reservas", filters, limit + 1, orderBy, startAt));
   const visible = documents.slice(0, limit);
   const clientIds = [...new Set(visible.map((item) => String(item.data.clienteId ?? "")).filter(Boolean))];
@@ -130,7 +144,7 @@ async function getAdminReservations(ctx: RequestContext): Promise<Response> {
     });
   }
   const last = visible.at(-1);
-  const nextCursor = documents.length > limit && last ? await pageToken(ctx, String(last.data.criadaEm), last.id) : null;
+  const nextCursor = documents.length > limit && last ? await pageToken(ctx, scope, String(last.data[sortField] ?? ""), last.id) : null;
   return jsonResponse(ctx, { reservations: result, page: { limit, nextCursor } });
 }
 
@@ -316,9 +330,10 @@ async function listLists(ctx: RequestContext): Promise<Response> {
   const limit = parseLimit(ctx.url.searchParams.get("limit"), 25, 50);
   const filters = [eq("bancaId", firestoreString(ctx.env.BANCA_ID))];
   if (status) filters.push(eq("status", firestoreString(status)));
-  const cursor = await readPageToken(ctx, ctx.url.searchParams.get("cursor"));
+  const scope = `lists:v2:${status ?? "all"}`;
+  const cursor = await readPageToken(ctx, ctx.url.searchParams.get("cursor"), scope);
   const orderBy = [{ field: { fieldPath: "criadaEm" }, direction: "DESCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }];
-  const startAt = cursor ? { values: [firestoreString(cursor.date), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/listas/${cursor.id}` }], before: false } : undefined;
+  const startAt = cursor ? { values: [firestoreString(cursor.sortValue), { referenceValue: `projects/${ctx.env.FIREBASE_PROJECT_ID}/databases/(default)/documents/listas/${cursor.id}` }], before: false } : undefined;
   const documents = await ctx.db.query("listas", query("listas", filters, limit + 1, orderBy, startAt));
   const visible = documents.slice(0, limit);
   const last = visible.at(-1);
@@ -332,7 +347,7 @@ async function listLists(ctx: RequestContext): Promise<Response> {
       status: document.data.status,
       version: Number(document.data.versao ?? 1),
     })),
-    page: { limit, nextCursor: documents.length > limit && last ? await pageToken(ctx, String(last.data.criadaEm), last.id) : null },
+    page: { limit, nextCursor: documents.length > limit && last ? await pageToken(ctx, scope, String(last.data.criadaEm), last.id) : null },
   });
 }
 

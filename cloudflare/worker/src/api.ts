@@ -38,10 +38,36 @@ export function errorResponse(ctx: RequestContext, error: HttpError): Response {
 }
 
 export async function readJsonBody(request: Request, maxBytes = 32_000): Promise<JsonObject> {
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > maxBytes) throw new HttpError({ code: "payload_too_large", message: "Request body is too large.", status: 413 });
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new HttpError({ code: "payload_too_large", message: "Request body is too large.", status: 413 });
+  const contentLengthHeader = request.headers.get("content-length");
+  if (contentLengthHeader && /^\d+$/.test(contentLengthHeader) && Number(contentLengthHeader) > maxBytes) {
+    throw new HttpError({ code: "payload_too_large", message: "Request body is too large.", status: 413 });
+  }
+
+  let raw = "";
+  const reader = request.body?.getReader();
+  if (reader) {
+    const decoder = new TextDecoder();
+    let bytesRead = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          raw += decoder.decode();
+          break;
+        }
+
+        bytesRead += value.byteLength;
+        if (bytesRead > maxBytes) {
+          try { await reader.cancel(); } catch { /* preserve the payload-size error */ }
+          throw new HttpError({ code: "payload_too_large", message: "Request body is too large.", status: 413 });
+        }
+        raw += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   let parsed: unknown;
   try { parsed = raw ? JSON.parse(raw) : {}; } catch {
     throw new HttpError({ code: "invalid_json", message: "Request body must be valid JSON.", status: 400 });

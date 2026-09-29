@@ -4,14 +4,14 @@ import { useAdminAuth } from '../providers';
 import { logoutAdmin } from '../../infra/firebase/auth';
 
 const adminLinks = [
-  { to: '/admin', label: 'Visão geral', icon: LayoutDashboard, end: true },
-  { to: '/admin/listas', label: 'Listas', icon: BookOpen },
-  { to: '/admin/reservas', label: 'Reservas', icon: Bell },
-  { to: '/admin/retiradas', label: 'Retiradas hoje', icon: Clock3 },
-  { to: '/admin/recolhimentos', label: 'Recolhimentos', icon: Boxes },
-  { to: '/admin/historico', label: 'Histórico', icon: History },
-  { to: '/admin/perfil', label: 'Perfil da banca', icon: Store },
-  { to: '/admin/configuracoes', label: 'Configurações', icon: Settings2 },
+  { to: '/admin', label: 'Visão geral', mobileLabel: 'Início', icon: LayoutDashboard, end: true },
+  { to: '/admin/listas', label: 'Listas', mobileLabel: 'Listas', icon: BookOpen },
+  { to: '/admin/reservas', label: 'Reservas', mobileLabel: 'Reservas', icon: Bell },
+  { to: '/admin/retiradas', label: 'Retiradas hoje', mobileLabel: 'Retirada', icon: Clock3 },
+  { to: '/admin/recolhimentos', label: 'Recolhimentos', mobileLabel: 'Lotes', icon: Boxes },
+  { to: '/admin/historico', label: 'Histórico', mobileLabel: 'Histórico', icon: History },
+  { to: '/admin/perfil', label: 'Perfil da banca', mobileLabel: 'Perfil', icon: Store },
+  { to: '/admin/configuracoes', label: 'Configurações', mobileLabel: 'Ajustes', icon: Settings2 },
 ];
 
 export function AdminShell() {
@@ -30,7 +30,7 @@ export function AdminShell() {
         <NavLink className="admin-back" to="/"><ArrowLeft size={15} /> Voltar ao site</NavLink>
       </aside>
       <div className="admin-main"><header className="admin-topbar"><span className="eyebrow">BANCA ANA MARIA · OPERAÇÃO</span><span className="admin-topbar__status"><span className="status-dot" /> PAINEL ADMINISTRATIVO</span></header><main className="admin-content"><Outlet /></main></div>
-      <nav className="admin-mobile-nav" aria-label="Navegação administrativa">{adminLinks.slice(0, 5).map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive ? 'is-active' : ''}><Icon size={18} /><span>{label}</span></NavLink>)}</nav>
+      <nav className="admin-mobile-nav" aria-label="Navegação administrativa no celular">{adminLinks.map(({ to, label, mobileLabel, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} title={label} className={({ isActive }) => isActive ? 'is-active' : ''}><Icon size={18} /><span>{mobileLabel}</span></NavLink>)}</nav>
     </div>
   );
 }

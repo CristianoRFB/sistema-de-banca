@@ -1,6 +1,6 @@
 import { catalogRowsForStocks, eq, firestoreString, jsonResponse, prepareIdempotency, query, readJsonBody, saveIdempotency, setCatalogAvailability } from "../api";
 import { assertInventoryValid, defaultOpeningHours, isPlainObject, localWeekday, reservationAvailability, requirePositiveInteger, requireString, validatePickupWindow } from "../domain";
-import { createClientSessionToken, getClientIdentity, hashClientSessionToken, hashCustomerPhone, maskPhone, normalizeName, normalizePhone, rateLimit } from "../security";
+import { createClientSessionToken, getClientIdentity, hashClientSessionToken, hashCustomerPhone, maskPhone, normalizeName, normalizePhone, rateLimit, verifyClientSessionSignature } from "../security";
 import type { FirestoreDocument, JsonObject, RequestContext } from "../types";
 import { HttpError } from "../types";
 
@@ -31,7 +31,7 @@ async function readClientPageCursor(ctx: RequestContext, value: string | null): 
     const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
     const parsed = JSON.parse(atob(base64)) as { date?: unknown; id?: unknown; signature?: unknown };
     if (typeof parsed.date !== "string" || typeof parsed.id !== "string" || typeof parsed.signature !== "string" || !validDocumentId(parsed.id) ||
-        parsed.signature !== await hashClientSessionToken(ctx.env, `client-reservation-cursor:v1:${parsed.date}:${parsed.id}`)) {
+        !await verifyClientSessionSignature(ctx.env, `client-reservation-cursor:v1:${parsed.date}:${parsed.id}`, parsed.signature)) {
       throw new Error("Invalid signed cursor.");
     }
     return { date: parsed.date, id: parsed.id };
@@ -126,7 +126,11 @@ async function createSession(ctx: RequestContext): Promise<Response> {
       if (!existing || existing.data.ativo !== true || existing.data.bancaId !== ctx.env.BANCA_ID || existing.data.nomeNormalizado !== nameNormalized) {
         throw new HttpError({ code: "identity_not_found", message: "No profile matched those details.", status: 404 });
       }
-      client = existing.data;
+      throw new HttpError({
+        code: "profile_session_exists",
+        message: "This profile is already linked to a device session. Use that device or ask the bank for help.",
+        status: 409,
+      });
     } else {
       clientId = crypto.randomUUID();
       client = {
@@ -254,7 +258,7 @@ async function createReservation(ctx: RequestContext): Promise<Response> {
       reservationCutoffs: cutoffs,
     });
 
-    const itemReservationIds: string[] = [];
+    const createdItems: FirestoreDocument[] = [];
     const catalogRows = await catalogRowsForStocks(transaction, ctx.env, requestedItems.map((item) => item.itemReparteId));
     const updatedAvailability = new Map<string, number>();
     for (const requested of requestedItems) {
@@ -263,7 +267,6 @@ async function createReservation(ctx: RequestContext): Promise<Response> {
       assertInventoryValid(item.data);
       if (reservationAvailability(item.data) < requested.quantity) throw new HttpError({ code: "insufficient_stock", message: "One or more selected items no longer have enough stock.", status: 409 });
       const itemReservationId = crypto.randomUUID();
-      itemReservationIds.push(itemReservationId);
       const updatedInventory = {
         ...item.data,
         quantidadeReservada: Number(item.data.quantidadeReservada ?? 0) + requested.quantity,
@@ -284,7 +287,7 @@ async function createReservation(ctx: RequestContext): Promise<Response> {
       };
       transaction.set(`itensReparte/${requested.itemReparteId}`, updatedInventory);
       updatedAvailability.set(requested.itemReparteId, reservationAvailability(updatedInventory));
-      transaction.set(`itensReserva/${itemReservationId}`, {
+      const reservationItemData = {
         reservaId: reservationId,
         bancaId: ctx.env.BANCA_ID,
         itemReparteId: requested.itemReparteId,
@@ -296,7 +299,9 @@ async function createReservation(ctx: RequestContext): Promise<Response> {
         precoUnitarioSnapshot: catalogRow.data.precoExibicao ?? item.data.precoVenda ?? null,
         status: "RESERVADO",
         criadoEm: now.toISOString(),
-      }, { mustNotExist: true });
+      };
+      transaction.set(`itensReserva/${itemReservationId}`, reservationItemData, { mustNotExist: true });
+      createdItems.push({ id: itemReservationId, name: "", data: reservationItemData });
       transaction.set(`movimentacoesEstoque/${movementId}`, movement, { mustNotExist: true });
     }
     setCatalogAvailability(transaction, catalogRows, updatedAvailability, now.toISOString());
@@ -316,7 +321,7 @@ async function createReservation(ctx: RequestContext): Promise<Response> {
       lembreteFechamentoEnviado: false,
       atualizadaEm: now.toISOString(),
     };
-    const response = { reservationId, status: "ATIVA", expiresAt: pickup.expiresAt.toISOString(), desiredDate: pickup.pickupAt.toISOString(), itemReservationIds };
+    const response = publicReservation({ id: reservationId, name: "", data: reservation }, createdItems);
     transaction.set(`reservas/${reservationId}`, reservation, { mustNotExist: true });
     saveIdempotency(transaction, idempotency, response);
     return response;
@@ -445,8 +450,10 @@ async function updateIntent(ctx: RequestContext, reservationId: string): Promise
     const reservation = await transaction.get(`reservas/${reservationId}`);
     if (!reservation || reservation.data.bancaId !== ctx.env.BANCA_ID || reservation.data.clienteId !== identity.clientId) throw new HttpError({ code: "not_found", message: "Reservation not found.", status: 404 });
     if (!ACTIVE_RESERVATION_STATUSES.includes(String(reservation.data.status))) throw new HttpError({ code: "reservation_closed", message: "This reservation is no longer active.", status: 409 });
-    const response = { reservationId, intent };
-    transaction.set(`reservas/${reservationId}`, { ...reservation.data, intencaoRetirada: intent, atualizadaEm: now });
+    const reservationItems = await transaction.query("itensReserva", itemQuery(reservationId));
+    const updatedReservation = { ...reservation.data, intencaoRetirada: intent, atualizadaEm: now };
+    const response = publicReservation({ ...reservation, data: updatedReservation }, reservationItems);
+    transaction.set(`reservas/${reservationId}`, updatedReservation);
     saveIdempotency(transaction, idempotency, response);
     return response;
   });
@@ -545,7 +552,7 @@ async function rescheduleReservation(ctx: RequestContext, reservationId: string)
       usuarioId: null,
       criadoEm: now.toISOString(),
     }, { mustNotExist: true });
-    const response = { reservationId, desiredDate: updatedReservation.dataRetiradaPretendida, desiredTime: updatedReservation.horarioAproximado, expiresAt: updatedReservation.expiraEm, pickupIntent: updatedReservation.intencaoRetirada };
+    const response = publicReservation({ ...reservation, data: updatedReservation }, reservationItems);
     saveIdempotency(transaction, idem, response);
     return response;
   });

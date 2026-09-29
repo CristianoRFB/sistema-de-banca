@@ -16,3 +16,21 @@ Registre aqui mudanças relevantes tomadas durante o desenvolvimento, com data, 
 
 - O repositório local começa sem commits, com todos os arquivos não rastreados. O remoto oficial está configurado, mas não anuncia branches. Preservar todos os arquivos e não reescrever histórico; verificar novamente o remoto antes de decidir como publicar o primeiro commit.
 - A estrutura existente é scaffold sem dependências ou implementação, confirmada pela comparação com o ZIP. A execução poderá preencher módulos vazios, mantendo os caminhos definidos sempre que possível.
+
+## 2026-09-29 — Segurança, recuperação de sessão e integração de fluxos
+
+- **Sessão de cliente sem takeover:** não emitir uma nova sessão apenas com nome e telefone para um telefone já associado a perfil. Esses dados não provam posse do aparelho/linha; a tentativa retorna `profile_session_exists` e orienta contato com a banca. Sessões opacas locais duram 30 dias e renovam durante o uso quando faltam até sete dias. A recuperação de cliente sem acesso ao aparelho requer verificação humana pela banca, pois a UX não pode exigir OTP, e-mail ou senha.
+- **Cursor assinado:** paginação de catálogo, reservas do cliente e administração usa HMAC com escopo/filtros vinculados ao token e verificação WebCrypto, evitando reutilização em outra busca/filtro.
+- **Contratos de API:** respostas do Worker preservam os envelopes documentados para perfil, item do catálogo e reserva. Escritas idempotentes enviam `Idempotency-Key`; atualizações de intenção, remarcação e criação de reserva retornam a reserva completa esperada pela UI.
+- **Retiradas do dia:** filtrar no Worker por limites do dia no fuso `America/Sao_Paulo` e estados de reserva ativos/parcialmente retirados. A UI pagina com cursor assinado; a confirmação baixa somente unidades registradas como fisicamente retiradas.
+- **Perfil público da banca:** a página de localização lê perfil e horários pelo repositório de domínio; usa os dados locais predefinidos enquanto a configuração pública remota está indisponível.
+- **Limites de catálogo:** limitar leitura por requisição e retornar cursor; recalcular estoque no Worker. Aplicar o rate limit já provisionado aos endpoints de lista e detalhe públicos.
+- **Limites de PDF/OCR e PWA:** restringir tamanho/páginas/pixels e liberar recursos de PDF/OCR no `finally`. Pré-carregar apenas o shell leve; carregar chunks e arquivos de OCR por cache de runtime, para não baixar dezenas de megabytes durante a instalação.
+- **Provisionamento inicial:** criar script Node sem credencial embutida, via Google Cloud Application Default Credentials, que cria apenas o documento de usuário admin e não sobrescreve documentos. ID oficial da banca e UID precisam vir do ambiente real e continuam pendentes.
+
+## 2026-09-29 — Preparação de deploy Cloudflare
+
+- Manter Worker e frontend no repositório oficial, com rota `/api/*` no mesmo domínio quando o domínio/zone forem definidos, ou `VITE_API_BASE_URL` explícita se hospedados em origens distintas.
+- O frontend pode usar integração GitHub/Cloudflare Pages. O Worker precisa de bindings/segredos separados; `BANCA_ID`, domínio/CORS, namespace real de rate limit, `FIREBASE_SERVICE_ACCOUNT_JSON` e `CLIENT_SESSION_PEPPER` são valores de ambiente e não devem ser adicionados ao Git.
+- O Vite encaminha `/api` para o Wrangler local em `localhost:8787`; isso mantém a UI e a API same-origin durante desenvolvimento. O typecheck do Worker tem configuração e comando próprios (`npm run worker:typecheck`) em vez de depender acidentalmente das opções do frontend.
+- Nenhum deploy deve ocorrer antes de validação de build, lint, tipos, testes no Emulator/staging e teste do fluxo real com a conta provisionada.

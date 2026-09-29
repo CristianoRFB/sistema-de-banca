@@ -26,6 +26,7 @@ export interface ProdutoCatalogo {
 export interface PaginaCatalogo {
   itens: ProdutoCatalogo[];
   proximoCursor: string | null;
+  temMais: boolean;
   banca?: {
     nomeExibicao: string;
     cidade: string;

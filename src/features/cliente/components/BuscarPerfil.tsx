@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, UserRound } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import { ApiError } from '../../../infra/browser/api-client';
 import { clienteRepository } from '../cliente.repository';
 import { salvarSessaoCliente } from '../../../infra/local-storage/cliente-session';
 import type { PerfilMascarado, SessaoCliente } from '../cliente.types';
@@ -39,8 +40,10 @@ export function BuscarPerfil({ onAuthenticated }: { onAuthenticated: (session: S
       });
       salvarSessaoCliente(session);
       onAuthenticated(session);
-    } catch {
-      setError('Não foi possível confirmar o telefone. Confira os números e tente de novo.');
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.code === 'profile_session_exists'
+        ? 'Esse perfil já está vinculado a outro dispositivo. Use o dispositivo onde se cadastrou ou peça ajuda à banca para recuperar o acesso.'
+        : 'Não foi possível confirmar o telefone. Confira os números e tente de novo.');
     } finally { setLoading(false); }
   }
 

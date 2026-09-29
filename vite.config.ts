@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  server: {
+    // Keep browser requests same-origin in local development; the Worker runs on Wrangler's default port.
+    proxy: { '/api': 'http://localhost:8787' },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -24,18 +28,39 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,webmanifest}'],
-        globIgnores: ['tesseract/**'],
+        globPatterns: ['**/*.{css,html,svg,webmanifest}'],
+        globIgnores: [
+          'tesseract/**',
+          'assets/exceljs*.js',
+          'assets/pdf-*.js',
+          'assets/jspdf*.js',
+          'assets/html2canvas*.js',
+          'assets/index.es-*.js',
+          'assets/purify.es-*.js',
+        ],
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
         runtimeCaching: [
           {
+            // Vite/Rolldown hashes make these URLs immutable and safe to cache at runtime.
+            urlPattern: ({ url }) =>
+              url.origin === self.location.origin &&
+              /^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|mjs)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'app-script-assets-v1',
+              expiration: { maxEntries: 100, maxAgeSeconds: 31_536_000 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             urlPattern: ({ url }) => url.origin === self.location.origin && /^\/(?:tesseract|tessdata)\//.test(url.pathname),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'ocr-assets-v1',
+              // Bump this version when replacing assets at the stable OCR URLs below.
+              cacheName: 'ocr-assets-v2',
               expiration: { maxEntries: 8, maxAgeSeconds: 31_536_000 },
               cacheableResponse: { statuses: [0, 200] },
             },

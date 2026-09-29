@@ -11,6 +11,15 @@ interface PositionedText {
   y: number;
 }
 
+export const PDF_IMPORT_LIMITS = {
+  maxFileBytes: 20 * 1024 * 1024,
+  maxPages: 30,
+  maxRenderedPixelsPerPage: 8_000_000,
+  maxRenderedDimension: 4096,
+} as const;
+
+const MAX_PDF_RENDER_SCALE = 1.8;
+
 function textLines(items: readonly unknown[]): string[] {
   const positioned: PositionedText[] = [];
   for (const item of items) {
@@ -62,69 +71,136 @@ export async function parsePdfFile(
   file: Blob & { name?: string },
   options: ImportOptions = {},
 ): Promise<ImportDraft> {
+  if (file.size > PDF_IMPORT_LIMITS.maxFileBytes) {
+    throw new Error("Este PDF é maior que 20 MB. Comprima ou divida o arquivo e tente novamente.");
+  }
+
   options.onProgress?.({ stage: "read", percent: 5, message: "Abrindo PDF no dispositivo" });
   const pdfjs = await import("pdfjs-dist");
   const workerUrl = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.default;
 
   const loadingTask = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const pdf = await loadingTask.promise;
   const allRows: string[][] = [];
   let totalConfidence = 0;
   let ocrPages = 0;
   const ownsEngine = !options.ocrEngine;
-  const engine =
-    options.ocrEngine ??
-    createTesseractOcrEngine({
-      language: "por+eng+jpn",
-      langPath: options.ocrLangPath ?? "/tessdata",
-      workerPath: options.ocrWorkerPath,
-      corePath: options.ocrCorePath,
-    });
+  let engine = options.ocrEngine;
+  let pageCount: number;
 
   try {
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const pdf = await loadingTask.promise;
+    pageCount = pdf.numPages;
+    if (pageCount > PDF_IMPORT_LIMITS.maxPages) {
+      throw new Error(
+        "Este PDF tem mais de 30 páginas. Divida o arquivo em partes menores e tente novamente.",
+      );
+    }
+
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       options.onProgress?.({
         stage: "pdf",
-        percent: Math.round(((pageNumber - 1) / pdf.numPages) * 85),
-        message: "Lendo página " + pageNumber + " de " + pdf.numPages,
+        percent: Math.round(((pageNumber - 1) / pageCount) * 85),
+        message: "Lendo página " + pageNumber + " de " + pageCount,
       });
       const page = await pdf.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const extracted = textLines(content.items as unknown[]);
-      const text = extracted.join("\n");
+      let canvas: HTMLCanvasElement | null = null;
+      try {
+        const content = await page.getTextContent();
+        const extracted = textLines(content.items as unknown[]);
+        const text = extracted.join("\n");
 
-      if (text.replace(/\s/g, "").length >= 12) {
-        allRows.push(...rowsFromText(text));
-        totalConfidence += 1;
-      } else {
-        const viewport = page.getViewport({ scale: 1.8 });
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        await page.render({ canvas, viewport }).promise;
-        const result = await engine.recognize(canvas, {
-          onProgress: ({ status, progress }) =>
-            options.onProgress?.({
-              stage: "ocr",
-              percent: 10 + Math.round(progress * 70),
-              message: "OCR página " + pageNumber + ": " + status,
-            }),
-        });
-        allRows.push(...rowsFromText(result.text));
-        totalConfidence += result.confidence;
-        ocrPages += 1;
-        canvas.width = 0;
-        canvas.height = 0;
+        if (text.replace(/\s/g, "").length >= 12) {
+          allRows.push(...rowsFromText(text));
+          totalConfidence += 1;
+        } else {
+          const baseViewport = page.getViewport({ scale: 1 });
+          const baseWidth = baseViewport.width;
+          const baseHeight = baseViewport.height;
+          const basePixels = baseWidth * baseHeight;
+          const longestDimension = Math.max(baseWidth, baseHeight);
+          if (
+            !Number.isFinite(basePixels) ||
+            basePixels <= 0 ||
+            !Number.isFinite(longestDimension) ||
+            longestDimension <= 0
+          ) {
+            throw new Error("Esta página tem dimensões inválidas para processamento neste dispositivo.");
+          }
+
+          const scale = Math.min(
+            MAX_PDF_RENDER_SCALE,
+            Math.sqrt(PDF_IMPORT_LIMITS.maxRenderedPixelsPerPage / basePixels),
+            PDF_IMPORT_LIMITS.maxRenderedDimension / longestDimension,
+          );
+          if (!Number.isFinite(scale) || scale <= 0) {
+            throw new Error("Esta página é grande demais para processar neste dispositivo.");
+          }
+
+          const viewport = page.getViewport({ scale });
+          if (
+            !Number.isFinite(viewport.width) ||
+            !Number.isFinite(viewport.height) ||
+            viewport.width <= 0 ||
+            viewport.height <= 0
+          ) {
+            throw new Error("Esta página tem dimensões inválidas para processamento neste dispositivo.");
+          }
+          const width = Math.max(1, Math.floor(viewport.width));
+          const height = Math.max(1, Math.floor(viewport.height));
+          if (
+            width > PDF_IMPORT_LIMITS.maxRenderedDimension ||
+            height > PDF_IMPORT_LIMITS.maxRenderedDimension ||
+            width * height > PDF_IMPORT_LIMITS.maxRenderedPixelsPerPage
+          ) {
+            throw new Error("Esta página é grande demais para processar neste dispositivo.");
+          }
+
+          canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          await page.render({ canvas, viewport }).promise;
+          engine ??= createTesseractOcrEngine({
+            language: "por+eng+jpn",
+            langPath: options.ocrLangPath ?? "/tessdata",
+            workerPath: options.ocrWorkerPath,
+            corePath: options.ocrCorePath,
+          });
+          const result = await engine.recognize(canvas, {
+            onProgress: ({ status, progress }) =>
+              options.onProgress?.({
+                stage: "ocr",
+                percent: 10 + Math.round(progress * 70),
+                message: "OCR página " + pageNumber + ": " + status,
+              }),
+          });
+          allRows.push(...rowsFromText(result.text));
+          totalConfidence += result.confidence;
+          ocrPages += 1;
+        }
+      } finally {
+        if (canvas) {
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+        try {
+          page.cleanup();
+        } catch {
+          // Keep a parse/OCR error visible even if PDF.js page cleanup fails.
+        }
       }
-      page.cleanup();
     }
   } finally {
-    await loadingTask.destroy();
-    if (ownsEngine) await engine.dispose?.();
+    const engineToDispose = ownsEngine ? engine : null;
+    await Promise.allSettled([
+      Promise.resolve().then(() => loadingTask.destroy()),
+      ...(engineToDispose
+        ? [Promise.resolve().then(() => engineToDispose.dispose?.())]
+        : []),
+    ]);
   }
 
-  const meanConfidence = pdf.numPages ? totalConfidence / pdf.numPages : 0;
+  const meanConfidence = pageCount ? totalConfidence / pageCount : 0;
   options.onProgress?.({ stage: "review", percent: 95, message: "Criando rascunho para revisão" });
   const draft = createImportDraftFromRows(
     allRows,
@@ -135,7 +211,7 @@ export async function parsePdfFile(
   );
   if (ocrPages > 0) {
     draft.warnings.unshift(
-      ocrPages + " de " + pdf.numPages + " página(s) exigiram OCR local; confira os dados extraídos.",
+      ocrPages + " de " + pageCount + " página(s) exigiram OCR local; confira os dados extraídos.",
     );
   }
   return draft;

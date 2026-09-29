@@ -7,7 +7,7 @@ describe("Firestore rules", () => {
 
   beforeAll(async () => {
     testEnvironment = await initializeTestEnvironment({
-      projectId: "banca-88851",
+      projectId: "demo-banca",
       firestore: {
         rules: readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8"),
       },

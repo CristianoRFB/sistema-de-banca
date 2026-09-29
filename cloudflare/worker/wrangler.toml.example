@@ -1,15 +1,18 @@
 name = "sistema-de-banca-api"
 main = "src/index.ts"
-compatibility_date = "2026-09-28"
+compatibility_date = "2026-09-29"
 
 [vars]
 FIREBASE_PROJECT_ID = "banca-88851"
 BANCA_ID = "PREENCHER_ID_DO_DOCUMENTO_BANCAS"
 CORS_ORIGINS = "https://SEU_DOMINIO_FINAL"
 
+# After assigning the custom domain, route only API paths through this Worker.
+# routes = [{ pattern = "SEU_DOMINIO_FINAL/api/*", zone_name = "SEU_DOMINIO_FINAL" }]
+
 [[ratelimits]]
 name = "CLIENT_RATE_LIMITER"
-namespace_id = "1001"
+namespace_id = "SUBSTITUA_PELO_NAMESPACE_ID_PROVISIONADO"
 
   [ratelimits.simple]
   limit = 60

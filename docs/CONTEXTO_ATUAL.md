@@ -4,7 +4,26 @@ Projeto: sistema de reservas, catálogo e operação de consignação/recolhimen
 
 Este arquivo é memória operacional do desenvolvimento. O agente deve atualizá-lo quando concluir módulos, descobrir limitações, alterar decisões ou estabelecer integrações que afetem trabalhos futuros.
 
-## Estado encontrado em 2026-09-28
+## Estado em 2026-09-29 — implementação e auditoria
+
+- O scaffold inicial descrito abaixo foi preenchido: aplicação React/Vite mobile-first, autenticação administrativa Firebase, Worker Cloudflare, camada de domínio/repositórios, catálogo e reservas públicas, operação administrativa de listas/retiradas/recolhimentos, importação local, geração de relatórios e PWA estão implementados no repositório.
+- Repositório oficial e projeto Firebase seguem `CristianoRFB/sistema-de-banca` e `banca-88851`. O checkout está na branch `main`; alterações desta rodada ainda estão sendo integradas e verificadas.
+- O browser acessa o Firestore apenas pelo Worker. As regras Firestore continuam `deny all`; o Worker usa credencial de serviço mantida como segredo Cloudflare. A V1 não usa Storage.
+- A sessão do cliente é local e opaca, expira após 30 dias e renova em atividade antes de expirar. Para impedir takeover por quem conhece nome e telefone, criar sessão para um telefone já vinculado exige recuperação assistida pela banca. Não há OTP/e-mail exigido na UX.
+- O catálogo público agora pagina resultados depois de aplicar busca por título/volume/editora, tipo e disponibilidade, calcula estoque em tempo real, valida cursores assinados e aplica rate limit. Cada requisição pode examinar até 200 itens de catálogo; resultados seguintes continuam pelo cursor.
+- A fila “Retiradas de hoje” consulta a data de Santa Fé do Sul, somente reservas ativas/parcialmente retiradas, e pagina resultados. A página pública de localização busca endereço, telefone e horários configurados, usando valores de fallback enquanto a API não responde.
+- O importador PDF/OCR aplica limites de tamanho, páginas e pixels e libera recursos locais mesmo em falha. O PWA pré-carrega o shell reduzido; os chunks JavaScript e os arquivos OCR usam cache de runtime.
+- Foi adicionado `npm run provision:admin`, um script de criação única para `bancas/{BANCA_ID}/usuarios/{ADMIN_UID}` via Google Cloud ADC. Ele não lê nem grava chave de service account no repositório e não sobrescreve um documento existente.
+- **Validação em 2026-09-29:** `npm run build` passou; `npm run lint` passou; `npm test` passou com 17 arquivos/56 testes; `npm run worker:typecheck` passou; as regras Firestore passaram com 2 testes no Emulator `demo-banca`.
+- O build ainda avisa sobre chunks individuais acima de 500 KiB (principalmente ExcelJS/PDF, carregados sob demanda); eles não entram no precache inicial do PWA.
+- Deploy de staging/produção e QA visual em dispositivo real ainda não foram feitos. A superfície browser do Codex estava indisponível para inspeção visual nesta rodada. Os bloqueios de conta/domínio estão em `docs/PENDENCIAS.md`.
+
+## Próximas ações
+
+- Resolver os valores e permissões reais descritos em `docs/PENDENCIAS.md`; depois validar o fluxo ponta a ponta em staging.
+- Fazer inspeção visual mobile/PWA em dispositivo real e repetir as validações automatizadas sempre que houver nova alteração.
+
+## Snapshot inicial encontrado em 2026-09-28 (histórico; superado pela implementação acima)
 - O ZIP `C:\Users\Aluno\Downloads\sistema-de-banca-scaffold.zip` já estava mesclado na raiz. Os 306 itens do ZIP foram comparados com o workspace por SHA-256; nenhum arquivo estava ausente ou diferente. Não foi necessário extrair nem sobrescrever arquivos.
 - O repositório contém a estrutura prevista pelo manifesto, mas a aplicação ainda não tem implementação funcional: os arquivos de `src/`, os cinco arquivos TypeScript do Worker e os scripts de seed/validação estão vazios. Os testes contêm apenas placeholders.
 - `package.json` define os scripts `build`, `lint` e `test`, mas ainda não declara dependências; não há lockfile nem `node_modules`.
@@ -16,12 +35,10 @@ Este arquivo é memória operacional do desenvolvimento. O agente deve atualizá
 - A documentação confirma o scaffold inicial sem código, portanto o contexto anterior estava correto; o principal gap é implementar e integrar os módulos, não substituir código funcional.
 - Divergências encontradas nos diagramas e interpretações adotadas estão registradas em `docs/DECISOES.md`.
 
-## Próximo estado de trabalho
-- Implementar fundação executável (dependências, rotas, estilos, PWA e inicialização segura).
-- Integrar regras de domínio e repositórios antes das telas operacionais.
-- Manter Firestore sem acesso público arbitrário; operações privadas de cliente dependem de identidade/sessão segura.
-- Testar build, lint, domínio, regras e fluxos críticos conforme as frentes forem implementadas.
-- Deploy e publicação ainda não foram tentados; dependem de configuração e permissões verificadas na fase de integração.
+## Registro de trabalho executado depois do snapshot inicial
+- Fundação, regras de domínio, repositórios, telas operacionais, Worker e PWA foram preenchidos em implementação posterior.
+- A auditoria atual está reconciliando contratos entre UI e Worker, privacidade, paginação, limites de entrada, custos de consulta e fluxos mobile.
+- Deploy e publicação ainda não foram tentados; dependem das configurações e permissões externas pendentes.
 
 ## Infraestrutura alvo
 - GitHub: CristianoRFB/sistema-de-banca

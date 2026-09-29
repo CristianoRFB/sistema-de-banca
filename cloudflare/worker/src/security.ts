@@ -17,6 +17,7 @@ interface FirebaseIdTokenClaims {
 }
 
 const jwkCache: { keys: JsonWebKey[]; expiresAt: number } = { keys: [], expiresAt: 0 };
+const CLIENT_SESSION_RENEWAL_THRESHOLD_MS = 7 * 86_400_000;
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -39,6 +40,16 @@ async function hmac(pepper: string, value: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pepper), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)));
   return toBase64Url(digest);
+}
+
+export async function verifyClientSessionSignature(env: Bindings, value: string, signature: string): Promise<boolean> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(signature)) return false;
+  let signatureBytes: Uint8Array;
+  try { signatureBytes = fromBase64Url(signature); } catch { return false; }
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.CLIENT_SESSION_PEPPER), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const signatureBuffer = new ArrayBuffer(signatureBytes.byteLength);
+  new Uint8Array(signatureBuffer).set(signatureBytes);
+  return crypto.subtle.verify("HMAC", key, signatureBuffer, new TextEncoder().encode(`client-session:v1:${value}`));
 }
 
 export async function hashClientSessionToken(env: Bindings, token: string): Promise<string> {
@@ -97,13 +108,30 @@ export async function getClientIdentity(ctx: RequestContext): Promise<ClientIden
   if (!match) throw new HttpError({ code: "session_required", message: "A valid client session is required.", status: 401 });
   const sessionId = await hashClientSessionToken(ctx.env, match[1]);
   const sessionDoc = await ctx.db.get(`sessoesClientes/${sessionId}`);
-  if (!sessionDoc || sessionDoc.data.ativa !== true || sessionDoc.data.bancaId !== ctx.env.BANCA_ID || Date.parse(String(sessionDoc.data.expiraEm ?? "")) <= Date.now()) {
+  const sessionExpiresAt = Date.parse(String(sessionDoc?.data.expiraEm ?? ""));
+  if (!sessionDoc || sessionDoc.data.ativa !== true || sessionDoc.data.bancaId !== ctx.env.BANCA_ID || !Number.isFinite(sessionExpiresAt) || sessionExpiresAt <= Date.now()) {
     throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
   }
   const clientId = String(sessionDoc.data.clienteId ?? "");
   const clientDoc = await ctx.db.get(`clientes/${clientId}`);
   if (!clientDoc || clientDoc.data.ativo !== true || clientDoc.data.bancaId !== ctx.env.BANCA_ID) {
     throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
+  }
+  if (sessionExpiresAt - Date.now() <= CLIENT_SESSION_RENEWAL_THRESHOLD_MS) {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 86_400_000).toISOString();
+    await ctx.db.transact(async (transaction) => {
+      const current = await transaction.get(`sessoesClientes/${sessionId}`);
+      const currentExpiry = Date.parse(String(current?.data.expiraEm ?? ""));
+      if (!current || current.data.ativa !== true || current.data.bancaId !== ctx.env.BANCA_ID || current.data.clienteId !== clientId || !Number.isFinite(currentExpiry) || currentExpiry <= now.getTime()) {
+        throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
+      }
+      transaction.set(`sessoesClientes/${sessionId}`, {
+        ...current.data,
+        expiraEm: expiresAt,
+        ultimoAcesso: now.toISOString(),
+      });
+    });
   }
   return { sessionId, clientId, session: sessionDoc.data, client: clientDoc.data };
 }

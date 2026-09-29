@@ -7,4 +7,6 @@ dist/
 .DS_Store
 coverage/
 .wrangler/
+firestore-debug.log
+cloudflare/worker/wrangler.toml
 .dev.vars

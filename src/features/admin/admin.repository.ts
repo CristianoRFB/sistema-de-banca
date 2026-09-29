@@ -129,10 +129,13 @@ export const adminRepository = {
   createList: (user: User, input: unknown) => adminRequest<ListMutationResult>(user, '/lists', { ...jsonBody(input), headers: { 'Idempotency-Key': key() } }),
   updateList: (user: User, id: string, input: unknown) => adminRequest<ListMutationResult>(user, `/lists/${encodeURIComponent(id)}`, { ...jsonBody(input), method: 'PUT', headers: { 'Idempotency-Key': key() } }),
   publishList: (user: User, id: string) => adminRequest<ListMutationResult>(user, `/lists/${encodeURIComponent(id)}/publish`, { ...jsonBody({}), headers: { 'Idempotency-Key': key() } }),
-  reservations: async (user: User, filters: { status?: string; date?: string } = {}) => {
-    const query = new URLSearchParams({ limit: '50', ...filters });
-    const response = await adminRequest<{ reservations: Array<Record<string, unknown>> }>(user, `/reservations?${query}`);
-    return response.reservations.map((raw): ReservaAdmin => {
+  reservationsPage: async (user: User, filters: { status?: string; date?: string; cursor?: string | null } = {}) => {
+    const query = new URLSearchParams({ limit: '50' });
+    if (filters.status) query.set('status', filters.status);
+    if (filters.date) query.set('date', filters.date);
+    if (filters.cursor) query.set('cursor', filters.cursor);
+    const response = await adminRequest<{ reservations: Array<Record<string, unknown>>; page?: { nextCursor?: string | null } }>(user, `/reservations?${query}`);
+    const reservations = response.reservations.map((raw): ReservaAdmin => {
       const customer = typeof raw.customer === 'object' && raw.customer !== null ? raw.customer as Record<string, unknown> : {};
       const items = Array.isArray(raw.items) ? raw.items as Array<Record<string, unknown>> : [];
       return {
@@ -153,7 +156,9 @@ export const adminRepository = {
         })),
       };
     });
+    return { reservations, nextCursor: response.page?.nextCursor ?? null };
   },
+  reservations: async (user: User, filters: { status?: string; date?: string } = {}) => (await adminRepository.reservationsPage(user, filters)).reservations,
   withdraw: (user: User, id: string, items: Array<{ itemReservationId: string; quantity: number }>) => adminRequest<ReservaAdmin>(user, `/reservations/${encodeURIComponent(id)}/withdraw`, {
     ...jsonBody({ items }), headers: { 'Idempotency-Key': key() },
   }),

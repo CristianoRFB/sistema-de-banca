@@ -18,12 +18,16 @@ export const clienteRepository = {
   },
 
   async getMyProfile(token: string): Promise<PerfilCliente> {
-    const result = await apiRequest<{ id: string; name: string }>('/client/profile', { headers: sessionHeaders(token) });
-    return { clienteId: result.id, nome: result.name };
+    const result = await apiRequest<{ profile: { clientId: string; name: string } }>('/client/profile', { headers: sessionHeaders(token) });
+    return { clienteId: result.profile.clientId, nome: result.profile.name };
   },
 
   async updateMyProfile(token: string, input: { nome: string; telefone: string }): Promise<PerfilCliente> {
-    const result = await apiRequest<{ id: string; name: string }>('/client/profile', { ...jsonBody({ name: input.nome, phone: input.telefone }), method: 'PATCH', headers: sessionHeaders(token) });
-    return { clienteId: result.id, nome: result.name };
+    const result = await apiRequest<{ profile: { clientId: string; name: string } }>('/client/profile', {
+      ...jsonBody({ name: input.nome, phone: input.telefone }),
+      method: 'PATCH',
+      headers: { ...sessionHeaders(token), 'Idempotency-Key': crypto.randomUUID() },
+    });
+    return { clienteId: result.profile.clientId, nome: result.profile.name };
   },
 };
