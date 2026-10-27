@@ -7,6 +7,7 @@ import { handleAdminRoute } from "./routes/admin";
 import { handleClientRoute } from "./routes/client";
 import { handlePublicRoute } from "./routes/public";
 import { handleTenantBootstrapRoute } from "./routes/tenant-bootstrap";
+import { handleTenantSessionRoute } from "./routes/tenant-session";
 import { handlePlatformRoute } from "./routes/platform";
 import { allowedOrigin } from "./security";
 import { listActiveTenants, resolveRequestTenant, scopeEnvForTenant } from "./tenant";
@@ -95,7 +96,7 @@ const worker = {
         tenant: resolved.tenant,
       };
 
-      const response = await handleTenantBootstrapRoute(ctx) ?? await handlePublicRoute(ctx) ?? await handleClientRoute(ctx) ?? await handleAdminRoute(ctx);
+      const response = await handleTenantBootstrapRoute(ctx) ?? await handleTenantSessionRoute(ctx) ?? await handlePublicRoute(ctx) ?? await handleClientRoute(ctx) ?? await handleAdminRoute(ctx);
       if (response) return response;
       throw new HttpError({ code: "not_found", message: "API route was not found.", status: 404 });
     } catch (error) {
