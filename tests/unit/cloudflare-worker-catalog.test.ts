@@ -225,6 +225,7 @@ describe('Cloudflare Worker public catalog', () => {
       env,
       db: new CatalogFirestore() as unknown as FirestoreRest,
       corsOrigin: null,
+      tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false },
     });
 
     expect(response?.headers.get('cache-control')).toBe('no-store');
