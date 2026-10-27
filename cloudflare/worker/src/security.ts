@@ -1,5 +1,5 @@
 import { FirestoreRest } from "./firebase/firestore-rest";
-import { HttpError, type AdminIdentity, type Bindings, type ClientIdentity, type RequestContext } from "./types";
+import { HttpError, type AdminIdentity, type Bindings, type ClientIdentity, type PlatformIdentity, type RequestContext, type TenantRole } from "./types";
 
 interface FirebaseJwkSet {
   keys: JsonWebKey[];
@@ -168,7 +168,7 @@ async function secureTokenJwks(): Promise<JsonWebKey[]> {
   return jwkCache.keys;
 }
 
-async function verifyFirebaseIdToken(token: string, projectId: string): Promise<FirebaseIdTokenClaims> {
+export async function verifyFirebaseIdToken(token: string, projectId: string): Promise<FirebaseIdTokenClaims> {
   const pieces = token.split(".");
   if (pieces.length !== 3) throw new HttpError({ code: "admin_auth_required", message: "A valid Firebase ID token is required.", status: 401 });
 
@@ -201,17 +201,45 @@ async function verifyFirebaseIdToken(token: string, projectId: string): Promise<
   return claims;
 }
 
-export async function requireAdmin(ctx: RequestContext, allowedRoles: Array<"ADMIN" | "OPERADOR"> = ["ADMIN", "OPERADOR"]): Promise<AdminIdentity> {
+function bearerToken(ctx: RequestContext): string {
   const authorization = ctx.request.headers.get("authorization") ?? "";
   const match = authorization.match(/^Bearer\s+([A-Za-z0-9._-]+)$/);
   if (!match) throw new HttpError({ code: "admin_auth_required", message: "A Firebase ID token is required.", status: 401 });
-  const claims = await verifyFirebaseIdToken(match[1], ctx.env.FIREBASE_PROJECT_ID);
-  const user = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}/usuarios/${claims.sub}`);
-  const role = user?.data.papel;
-  if (!user || user.data.ativo !== true || (role !== "ADMIN" && role !== "OPERADOR") || !allowedRoles.includes(role)) {
-    throw new HttpError({ code: "admin_forbidden", message: "This account is not authorized for this bank operation.", status: 403 });
+  return match[1];
+}
+
+export async function requirePlatformOwner(ctx: RequestContext): Promise<PlatformIdentity> {
+  const claims = await verifyFirebaseIdToken(bearerToken(ctx), ctx.env.FIREBASE_PROJECT_ID);
+  const owner = await ctx.db.get(`platformOwners/${claims.sub}`);
+  if (!owner || owner.data.ativo !== true) {
+    throw new HttpError({ code: "platform_forbidden", message: "This account is not authorized for platform administration.", status: 403 });
   }
-  return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
+  return { uid: claims.sub, role: "PLATFORM_OWNER", claims: claims as Record<string, unknown> };
+}
+
+export async function requireAdmin(
+  ctx: RequestContext,
+  allowedRoles: TenantRole[] = ["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"],
+): Promise<AdminIdentity> {
+  const claims = await verifyFirebaseIdToken(bearerToken(ctx), ctx.env.FIREBASE_PROJECT_ID);
+  const user = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}/usuarios/${claims.sub}`);
+  const role = user?.data.papel as TenantRole | undefined;
+  const validTenantRole = role === "ADMIN" || role === "OPERADOR" || role === "TENANT_OWNER" || role === "STAFF";
+  if (user && user.data.ativo === true && validTenantRole && allowedRoles.includes(role)) {
+    return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
+  }
+
+  const platformOwner = await ctx.db.get(`platformOwners/${claims.sub}`);
+  if (platformOwner?.data.ativo === true) {
+    return {
+      uid: claims.sub,
+      role: "PLATFORM_OWNER",
+      claims: claims as Record<string, unknown>,
+      platformOverride: true,
+    };
+  }
+
+  throw new HttpError({ code: "admin_forbidden", message: "This account is not authorized for this bank operation.", status: 403 });
 }
 
 export function publicProfile(data: Record<string, unknown>): Record<string, unknown> {
