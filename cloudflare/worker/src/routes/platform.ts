@@ -1,16 +1,10 @@
 import { eq, firestoreString, jsonResponse, query, readJsonBody } from "../api";
 import { requirePlatformOwner } from "../security";
+import { validateTenantSlugForCreation } from "../tenant";
 import { HttpError, type JsonObject, type PlatformIdentity, type RequestContext, type TenantRole } from "../types";
 
 const TENANT_ROLES = new Set<TenantRole>(["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"]);
 
-function cleanSlug(value: unknown): string {
-  const slug = String(value ?? "").trim().toLocaleLowerCase("pt-BR");
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(slug)) {
-    throw new HttpError({ code: "invalid_tenant_slug", message: "Tenant slug is invalid.", status: 400 });
-  }
-  return slug;
-}
 
 function cleanName(value: unknown): string {
   const name = String(value ?? "").trim();
@@ -56,7 +50,7 @@ async function listTenants(ctx: RequestContext): Promise<Response> {
 
 async function createTenant(ctx: RequestContext, actor: PlatformIdentity): Promise<Response> {
   const body = await readJsonBody(ctx.request, 12_000);
-  const slug = cleanSlug(body.slug);
+  const slug = validateTenantSlugForCreation(body.slug);
   const name = cleanName(body.name);
   const tenantId = typeof body.id === "string" && /^[A-Za-z0-9_-]{3,80}$/.test(body.id.trim())
     ? body.id.trim()
