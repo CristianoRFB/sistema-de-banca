@@ -59,7 +59,7 @@ const worker = {
         const healthCtx = {
           request,
           url: requestUrl,
-          env,
+          env: scopeEnvForTenant(env, "health"),
           db: new FirestoreRest(env),
           corsOrigin,
           tenant: { id: "health", slug: "health", name: "health", active: true, legacyFallback: false },
