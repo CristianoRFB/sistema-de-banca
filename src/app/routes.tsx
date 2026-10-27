@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAdminAuth } from './providers';
 import { DEFAULT_TENANT_SLUG, normalizeTenantSlug, tenantPanelPath, tenantPath } from './tenant';
 import { PublicShell } from './layouts/PublicShell';
+import { apiRequest } from '../infra/browser/api-client';
 import { AdminShell } from './layouts/AdminShell';
 
 const HomePage = lazy(() => import('../pages/public/HomePage').then(({ HomePage: page }) => ({ default: page })));
@@ -33,8 +34,30 @@ function TenantAdminGate() {
   const { user, loading } = useAdminAuth();
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
+  const [verified, setVerified] = useState<{ slug: string; allowed: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    user.getIdToken()
+      .then((token) => apiRequest('/admin/session', { headers: { Authorization: `Bearer ${token}` } }))
+      .then(() => { if (active) setVerified({ slug, allowed: true }); })
+      .catch(() => { if (active) setVerified({ slug, allowed: false }); });
+    return () => { active = false; };
+  }, [user, slug]);
+
   if (loading) return <div className="loading-block">Validando acesso…</div>;
-  return user ? <AdminShell /> : <Navigate to={tenantPanelPath(slug, 'login')} replace />;
+  if (!user) return <Navigate to={tenantPanelPath(slug, 'login')} replace />;
+  if (!verified || verified.slug !== slug) return <div className="loading-block">Confirmando acesso à banca…</div>;
+  if (!verified.allowed) {
+    return <div className="page-wrap empty-state" role="alert">
+      <span className="eyebrow">ACESSO NÃO AUTORIZADO</span>
+      <h1>Esta conta não pertence a esta banca.</h1>
+      <p>Trocar o slug ou abrir um link de outra banca não concede acesso.</p>
+      <Link className="button button--secondary" to={tenantPath(slug)}>Voltar ao site</Link>
+    </div>;
+  }
+  return <AdminShell />;
 }
 
 function PlatformGate() {
