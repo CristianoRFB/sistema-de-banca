@@ -26,10 +26,10 @@ describe('Platform Owner membership administration', () => {
     membershipActive = true;
     vi.stubGlobal('confirm', mocks.confirm);
     mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path === '/platform/tenants' && !init) {
+      if (path === '/platform/tenants' && (init?.method ?? 'GET') === 'GET') {
         return { tenants: [{ id: 'tenant-a', slug: 'banca-ana-maria', name: 'Banca A', active: true, createdAt: null, updatedAt: null }] };
       }
-      if (path === '/platform/tenants/tenant-a/memberships' && !init) {
+      if (path === '/platform/tenants/tenant-a/memberships' && (init?.method ?? 'GET') === 'GET') {
         return { memberships: [{ uid: 'operator-one', role: 'STAFF', active: membershipActive }] };
       }
       if (path === '/platform/tenants/tenant-a/memberships/operator-one' && init?.method === 'PUT') {
