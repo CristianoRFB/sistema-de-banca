@@ -4,9 +4,14 @@ compatibility_date = "2026-09-29"
 
 [vars]
 FIREBASE_PROJECT_ID = "banca-88851"
-BANCA_ID = "PREENCHER_ID_DO_DOCUMENTO_BANCAS"
+# BANCA_ID is intentionally omitted in the multi-tenant production model.
+# It may be set temporarily only to serve the legacy /api/public|client|admin routes during migration.
 CORS_ORIGINS = "https://SEU_DOMINIO_FINAL"
 
+# Canonical tenant-scoped API:
+#   /api/t/<tenant-slug>/public/*
+#   /api/t/<tenant-slug>/client/*
+#   /api/t/<tenant-slug>/admin/*
 # After assigning the custom domain, route only API paths through this Worker.
 # routes = [{ pattern = "SEU_DOMINIO_FINAL/api/*", zone_name = "SEU_DOMINIO_FINAL" }]
 
@@ -15,7 +20,6 @@ required = ["FIREBASE_SERVICE_ACCOUNT_JSON", "CLIENT_SESSION_PEPPER"]
 
 [[ratelimits]]
 name = "CLIENT_RATE_LIMITER"
-# Replace with a unique positive integer string for your Cloudflare account.
 namespace_id = "1001"
 
   [ratelimits.simple]
