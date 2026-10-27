@@ -8,6 +8,7 @@ import { catalogoRepository } from '../../features/catalogo/catalogo.repository'
 import { ReservarProdutoSheet } from '../../features/reservas/components/ReservarProdutoSheet';
 import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
 import { BANCA } from '../../app/config';
+import { currentTenantSlug, tenantPath } from '../../app/tenant';
 
 export function ProdutoPage() {
   const { itemReparteId = '' } = useParams();
@@ -40,15 +41,15 @@ export function ProdutoPage() {
   }, [itemReparteId, requestKey]);
 
   if (loadedRequestKey !== requestKey) return <div className="page-wrap loading-block" role="status" aria-live="polite">Abrindo a ficha do título <span className="loading-dots">···</span></div>;
-  if (loadState === 'not-found') return <div className="page-wrap empty-state"><span className="eyebrow">TÍTULO NÃO ENCONTRADO</span><h1>Essa página saiu<br />da prateleira.</h1><Link className="button button--dark" to="/catalogo"><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
-  if (loadState === 'failure' || !product) return <div className="page-wrap empty-state" role="alert"><span className="eyebrow">CATÁLOGO INDISPONÍVEL</span><h1>Não foi possível abrir este título.</h1><p>Confira sua conexão e tente novamente.</p><Button variant="secondary" type="button" onClick={() => setRetry((attempt) => attempt + 1)}>Tentar novamente</Button><Link className="back-link" to="/catalogo"><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
+  if (loadState === 'not-found') return <div className="page-wrap empty-state"><span className="eyebrow">TÍTULO NÃO ENCONTRADO</span><h1>Essa página saiu<br />da prateleira.</h1><Link className="button button--dark" to={tenantPath(currentTenantSlug(), 'catalogo')}><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
+  if (loadState === 'failure' || !product) return <div className="page-wrap empty-state" role="alert"><span className="eyebrow">CATÁLOGO INDISPONÍVEL</span><h1>Não foi possível abrir este título.</h1><p>Confira sua conexão e tente novamente.</p><Button variant="secondary" type="button" onClick={() => setRetry((attempt) => attempt + 1)}>Tentar novamente</Button><Link className="back-link" to={tenantPath(currentTenantSlug(), 'catalogo')}><ArrowLeft size={17} /> Voltar ao catálogo</Link></div>;
 
   const available = product.quantidadeDisponivel !== null && product.quantidadeDisponivel > 0;
   const price = product.preco == null ? 'Consulte na banca' : product.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <div className="product-page page-wrap">
-      <Link className="back-link" to="/catalogo"><ArrowLeft size={17} /> Catálogo</Link>
+      <Link className="back-link" to={tenantPath(currentTenantSlug(), 'catalogo')}><ArrowLeft size={17} /> Catálogo</Link>
       {demo && <div className="demo-ribbon"><span>Amostra de desenvolvimento</span> Sem estoque ou preço publicado. Este título não pode ser reservado.</div>}
       <section className="product-detail">
         <div className="product-detail__poster" aria-label="Capa indisponível; exibição tipográfica">
@@ -76,7 +77,7 @@ export function ProdutoPage() {
           <div className="product-location-note"><MapPin size={17} /><span>Retirada presencial em <b>{BANCA.city}</b>. A confirmação é feita pela equipe da banca.</span></div>
         </div>
       </section>
-      <div className="product-footnote"><span>LEIA. COMPARTILHE. VOLTE PARA MAIS.</span><Link to="/localizacao">Visite a banca <ArrowUpRight size={15} /></Link></div>
+      <div className="product-footnote"><span>LEIA. COMPARTILHE. VOLTE PARA MAIS.</span><Link to={tenantPath(currentTenantSlug(), 'localizacao')}>Visite a banca <ArrowUpRight size={15} /></Link></div>
       <ReservarProdutoSheet produto={product} open={reserveOpen} onClose={() => setReserveOpen(false)} />
     </div>
   );
