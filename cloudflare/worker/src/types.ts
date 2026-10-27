@@ -45,6 +45,7 @@ export interface AdminIdentity {
   role: TenantRole | "PLATFORM_OWNER";
   claims: JsonObject;
   platformOverride?: boolean;
+  supportExpiresAt?: string;
 }
 
 export interface PlatformIdentity {
