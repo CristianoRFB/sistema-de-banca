@@ -1,4 +1,5 @@
 export type Bindings = Omit<Env, "BANCA_ID"> & { BANCA_ID?: string };
+export type ScopedBindings = Bindings & { BANCA_ID: string };
 
 export type JsonObject = Record<string, unknown>;
 
@@ -54,7 +55,7 @@ export interface ClientIdentity {
 export interface RequestContext {
   request: Request;
   url: URL;
-  env: Bindings;
+  env: ScopedBindings;
   db: import("./firebase/firestore-rest").FirestoreRest;
   corsOrigin: string | null;
   tenant: TenantContext;
