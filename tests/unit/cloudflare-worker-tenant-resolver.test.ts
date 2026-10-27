@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveRequestTenant } from "../../cloudflare/worker/src/tenant";
+import { hashCustomerPhone } from "../../cloudflare/worker/src/security";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject } from "../../cloudflare/worker/src/types";
 import type { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-rest";
 
@@ -77,4 +78,31 @@ describe("tenant resolver", () => {
       baseEnv,
     )).rejects.toMatchObject({ code: "tenant_required", status: 404 } satisfies Partial<HttpError>);
   });
+  it("isolates two tenants that use the same customer phone", async () => {
+    const phone = "5517999991234";
+    const tenantAHash = await hashCustomerPhone({ ...baseEnv, BANCA_ID: "tenant-a" }, phone);
+    const tenantBHash = await hashCustomerPhone({ ...baseEnv, BANCA_ID: "tenant-b" }, phone);
+    expect(tenantAHash).not.toBe(tenantBHash);
+  });
+
+  it("resolves Tenant A and Tenant B independently from their slugs", async () => {
+    const db = new TenantDb([
+      document("tenant-a", { slug: "ana-maria", ativo: true }),
+      document("tenant-b", { slug: "banca-beta", ativo: true }),
+    ]);
+    const tenantA = await resolveRequestTenant(
+      db as unknown as FirestoreRest,
+      new URL("https://example.test/api/t/ana-maria/public/catalog"),
+      baseEnv,
+    );
+    const tenantB = await resolveRequestTenant(
+      db as unknown as FirestoreRest,
+      new URL("https://example.test/api/t/banca-beta/public/catalog"),
+      baseEnv,
+    );
+    expect(tenantA.env.BANCA_ID).toBe("tenant-a");
+    expect(tenantB.env.BANCA_ID).toBe("tenant-b");
+    expect(tenantA.tenant.id).not.toBe(tenantB.tenant.id);
+  });
+
 });
