@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAdminAuth } from '../../app/providers';
 import { adminRepository, type DashboardSummary } from '../../features/admin/admin.repository';
 import { AdminEmpty, AdminHeading, AdminLoadError, AdminLoading } from './AdminCommon';
+import { currentTenantSlug, tenantPanelPath } from '../../app/tenant';
 
 export function DashboardPage() {
   const { user } = useAdminAuth();
@@ -19,9 +20,9 @@ export function DashboardPage() {
   useEffect(() => { void load(); }, [load]);
 
   return <div className="admin-page">
-    <AdminHeading kicker="01 · VISÃO GERAL" title="Bom dia, equipe." description="Aqui está o que pede atenção na banca hoje." action={<Link className="button button--primary" to="/admin/listas/nova"><Plus size={16} /> Nova lista</Link>} />
+    <AdminHeading kicker="01 · VISÃO GERAL" title="Bom dia, equipe." description="Aqui está o que pede atenção na banca hoje." action={<Link className="button button--primary" to={tenantPanelPath(currentTenantSlug(), 'listas/nova')}><Plus size={16} /> Nova lista</Link>} />
     {loading ? <AdminLoading /> : failed ? <AdminLoadError onRetry={() => { setLoading(true); setFailed(false); void load(); }} /> : <>
-      <section className="admin-section-label"><span className="eyebrow">RETIRADAS DE HOJE</span><Link to="/admin/retiradas">Ver agenda completa <ArrowRight size={15} /></Link></section>
+      <section className="admin-section-label"><span className="eyebrow">RETIRADAS DE HOJE</span><Link to={tenantPanelPath(currentTenantSlug(), 'retiradas')}>Ver agenda completa <ArrowRight size={15} /></Link></section>
       <div className="metric-grid">
         <Metric icon={<CalendarDays />} label="Previstas hoje" value={summary?.retiradasHoje ?? 0} tone="dark" />
         <Metric icon={<Check />} label="Vão buscar" value={summary?.confirmaramPresenca ?? 0} tone="lime" />
@@ -30,12 +31,12 @@ export function DashboardPage() {
       </div>
       <div className="admin-dashboard-grid">
         <section className="admin-dashboard-card"><div className="admin-section-label"><span className="eyebrow">PRECISAM DE ATENÇÃO</span><Bell size={17} /></div>
-          {(summary?.recolhimentosProximos ?? 0) > 0 ? <Link className="admin-alert-line" to="/admin/recolhimentos"><span className="alert-symbol">!</span><span><strong>{summary?.recolhimentosProximos} recolhimentos próximos</strong><small>Confira os lotes e prepare a contagem física.</small></span><ArrowRight size={16} /></Link> : <AdminEmpty title="Nenhum recolhimento próximo" detail="A banca está em dia com as conferências de lote." />}
-          <Link className="admin-card-footer" to="/admin/recolhimentos">Abrir recolhimentos <ArrowRight size={15} /></Link>
+          {(summary?.recolhimentosProximos ?? 0) > 0 ? <Link className="admin-alert-line" to={tenantPanelPath(currentTenantSlug(), 'recolhimentos')}><span className="alert-symbol">!</span><span><strong>{summary?.recolhimentosProximos} recolhimentos próximos</strong><small>Confira os lotes e prepare a contagem física.</small></span><ArrowRight size={16} /></Link> : <AdminEmpty title="Nenhum recolhimento próximo" detail="A banca está em dia com as conferências de lote." />}
+          <Link className="admin-card-footer" to={tenantPanelPath(currentTenantSlug(), 'recolhimentos')}>Abrir recolhimentos <ArrowRight size={15} /></Link>
         </section>
         <section className="admin-dashboard-card"><div className="admin-section-label"><span className="eyebrow">LISTAS DE LANÇAMENTOS</span><BookOpen size={17} /></div>
           <div className="list-counts"><div><strong>{summary?.listasRascunho ?? 0}</strong><span>em rascunho</span></div><div><strong>{summary?.listasPublicadas ?? 0}</strong><span>publicadas</span></div></div>
-          <Link className="admin-card-footer" to="/admin/listas">Gerenciar listas <ArrowRight size={15} /></Link>
+          <Link className="admin-card-footer" to={tenantPanelPath(currentTenantSlug(), 'listas')}>Gerenciar listas <ArrowRight size={15} /></Link>
         </section>
       </div>
     </>}
