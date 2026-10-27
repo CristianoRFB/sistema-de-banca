@@ -1,4 +1,4 @@
-import { HttpError, type Bindings, type FirestoreDocument, type TenantContext } from "./types";
+import { HttpError, type Bindings, type FirestoreDocument, type ScopedBindings, type TenantContext } from "./types";
 import type { FirestoreRest } from "./firebase/firestore-rest";
 
 const TENANT_API_ROUTE = /^\/api\/t\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/(public|client|admin)(\/.*)?$/;
@@ -37,7 +37,7 @@ async function findTenantBySlug(db: FirestoreRest, slug: string): Promise<Firest
   return rows[0] ?? null;
 }
 
-export function scopeEnvForTenant(env: Bindings, tenantId: string): Bindings {
+export function scopeEnvForTenant(env: Bindings, tenantId: string): ScopedBindings {
   return { ...env, BANCA_ID: tenantId };
 }
 
@@ -45,7 +45,7 @@ export async function resolveRequestTenant(
   db: FirestoreRest,
   requestUrl: URL,
   env: Bindings,
-): Promise<{ tenant: TenantContext; url: URL; env: Bindings }> {
+): Promise<{ tenant: TenantContext; url: URL; env: ScopedBindings }> {
   const canonical = requestUrl.pathname.match(TENANT_API_ROUTE);
   if (canonical) {
     const slug = canonical[1].toLocaleLowerCase("pt-BR");
