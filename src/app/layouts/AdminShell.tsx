@@ -1,8 +1,10 @@
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Bell, BookOpen, Boxes, Clock3, History, LayoutDashboard, LogOut, Settings2, Store, UserRound } from 'lucide-react';
 import { useAdminAuth } from '../providers';
 import { normalizeTenantSlug, tenantPanelPath, tenantPath } from '../tenant';
 import { logoutAdmin } from '../../infra/firebase/auth';
+import { getTenantBootstrap, type TenantBootstrap } from '../../features/banca/tenant-bootstrap';
 
 const adminLinks = [
   { suffix: '', label: 'Visão geral', mobileLabel: 'Início', icon: LayoutDashboard, end: true },
@@ -18,10 +20,25 @@ const adminLinks = [
 
 export function AdminShell() {
   const { user } = useAdminAuth();
+  const [tenant, setTenant] = useState<TenantBootstrap | null>(null);
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
   const navigate = useNavigate();
   const root = tenantPanelPath(slug);
+
+  useEffect(() => {
+    let active = true;
+    getTenantBootstrap().then((value) => { if (active) setTenant(value); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [slug]);
+
+  const tenantName = tenant?.name || slug;
+  const tenantStyle = {
+    '--lime': tenant?.branding.primaryColor ?? undefined,
+    '--orange': tenant?.branding.accentColor ?? undefined,
+    '--paper': tenant?.branding.backgroundColor ?? undefined,
+    '--ink': tenant?.branding.textColor ?? undefined,
+  } as CSSProperties;
 
   async function logout() {
     await logoutAdmin();
@@ -29,9 +46,9 @@ export function AdminShell() {
   }
 
   return (
-    <div className="admin-shell" data-tenant={slug}>
+    <div className="admin-shell" data-tenant={slug} style={tenantStyle}>
       <aside className="admin-sidebar">
-        <NavLink className="admin-brand" to={root}><span className="brand-mark">B<span>.</span></span><span><b>BANCA</b><small>PAINEL DA BANCA</small></span></NavLink>
+        <NavLink className="admin-brand" to={root}><span className="brand-mark">B<span>.</span></span><span><b>BANCA</b><small>{tenantName}</small></span></NavLink>
         <div className="admin-sidebar__label">OPERAÇÃO</div>
         <nav aria-label="Navegação administrativa">
           {adminLinks.map(({ suffix, label, icon: Icon, end }) => {
@@ -46,7 +63,7 @@ export function AdminShell() {
       </aside>
       <div className="admin-main">
         <header className="admin-topbar">
-          <span className="eyebrow">{slug.toLocaleUpperCase('pt-BR')} · OPERAÇÃO</span>
+          <span className="eyebrow">{tenantName.toLocaleUpperCase('pt-BR')} · OPERAÇÃO</span>
           <span className="admin-topbar__status"><span className="status-dot" /> PAINEL ADMINISTRATIVO</span>
           <div className="admin-topbar__mobile-actions">
             <Link className="admin-topbar__action" to={tenantPath(slug)} aria-label="Voltar ao site público"><ArrowLeft size={15} /> Site</Link>
