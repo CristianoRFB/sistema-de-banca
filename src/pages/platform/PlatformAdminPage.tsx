@@ -92,6 +92,7 @@ export function PlatformAdminPage() {
 
   async function toggleTenant(tenant: PlatformTenant) {
     if (!user) return;
+    if (tenant.active && !window.confirm(`Desativar ${tenant.name}? O site e a operação da banca ficarão indisponíveis até a reativação.`)) return;
     setWorking(true);
     setError('');
     try {
@@ -147,6 +148,29 @@ export function PlatformAdminPage() {
       await loadMemberships(selectedTenantId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o acesso.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function changeMembershipStatus(membership: PlatformMembership) {
+    if (!user || !selectedTenantId || !membership.role) return;
+    if (membership.active && !window.confirm(`Revogar o acesso do usuário ${membership.uid} a este tenant?`)) return;
+    setWorking(true);
+    setError('');
+    try {
+      const token = await user.getIdToken();
+      await apiRequest(
+        `/platform/tenants/${encodeURIComponent(selectedTenantId)}/memberships/${encodeURIComponent(membership.uid)}`,
+        {
+          method: 'PUT',
+          headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: membership.role, active: !membership.active }),
+        },
+      );
+      await loadMemberships(selectedTenantId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível alterar o acesso.');
     } finally {
       setWorking(false);
     }
@@ -244,6 +268,11 @@ export function PlatformAdminPage() {
                   <b>{membership.uid}</b>
                   <small>{membership.role ?? 'SEM PAPEL'} · {membership.active ? 'ATIVO' : 'INATIVO'}</small>
                 </div>
+                <Button type="button" variant="secondary" disabled={working || !membership.role}
+                  onClick={() => void changeMembershipStatus(membership)}
+                  aria-label={`${membership.active ? 'Revogar' : 'Reativar'} acesso de ${membership.uid}`}>
+                  {membership.active ? 'Revogar acesso' : 'Reativar acesso'}
+                </Button>
               </article>
             ))}
             {!memberships.length && <p className="muted-copy">Nenhum acesso cadastrado neste tenant.</p>}
