@@ -88,11 +88,11 @@ export async function resolveRequestTenant(
   });
 }
 
-export async function listActiveTenants(db: FirestoreRest): Promise<TenantContext[]> {
-  // A single 500-document query silently skipped later tenants in scheduled jobs.
-  // Paginate deterministically by document name and use an exclusive cursor.
+/** Enumerate all tenants, including disabled ones, without truncating the platform dashboard. */
+export async function listTenantDocuments(db: FirestoreRest): Promise<FirestoreDocument[]> {
+  // Use a stable document-name cursor. The same pagination feeds cron and Platform Owner.
   const PAGE_SIZE = 100;
-  const tenants: TenantContext[] = [];
+  const documents: FirestoreDocument[] = [];
   let cursor: string | null = null;
   while (true) {
     const rows = await db.query("bancas", {
@@ -101,12 +101,9 @@ export async function listActiveTenants(db: FirestoreRest): Promise<TenantContex
       limit: PAGE_SIZE,
       ...(cursor ? { startAt: { values: [{ referenceValue: cursor }], before: false } } : {}),
     });
+    documents.push(...rows);
 
-    for (const document of rows) {
-      if (document.data.ativo !== false) tenants.push(tenantFromDocument(document, false));
-    }
-
-    if (rows.length < PAGE_SIZE) return tenants;
+    if (rows.length < PAGE_SIZE) return documents;
     const nextCursor = rows[rows.length - 1]?.name;
     if (!nextCursor || nextCursor === cursor) {
       throw new HttpError({
@@ -117,4 +114,10 @@ export async function listActiveTenants(db: FirestoreRest): Promise<TenantContex
     }
     cursor = nextCursor;
   }
+}
+
+export async function listActiveTenants(db: FirestoreRest): Promise<TenantContext[]> {
+  const documents = await listTenantDocuments(db);
+  return documents.filter((document) => document.data.ativo !== false)
+    .map((document) => tenantFromDocument(document, false));
 }
