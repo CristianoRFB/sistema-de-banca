@@ -187,7 +187,7 @@ export function PlatformAdminPage() {
         <div>
           <span className="eyebrow">77 SAAS · PLATFORM OWNER</span>
           <h1>Tenants da Banca</h1>
-          <p className="muted-copy">Administração global. O contexto da banca permanece isolado em cada painel.</p>
+          <p className="muted-copy">Administração global. O painel de uma banca exige membership local ativa; atribuições são registradas em auditoria.</p>
         </div>
         <div className="button-row">
           <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading || working}>
@@ -228,7 +228,7 @@ export function PlatformAdminPage() {
                 </div>
                 <div className="button-row">
                   <Link className="button button--secondary" to={tenantPath(tenant.slug)}><ExternalLink size={15} /> Site</Link>
-                  <Link className="button button--secondary" to={tenantPanelPath(tenant.slug)}><ExternalLink size={15} /> Painel</Link>
+                  <Link className="button button--secondary" to={tenantPanelPath(tenant.slug)} title="Requer acesso local à banca"><ExternalLink size={15} /> Painel</Link>
                   <Button type="button" variant="secondary" disabled={working} onClick={() => void loadMemberships(tenant.id)}>
                     Acessos
                   </Button>
