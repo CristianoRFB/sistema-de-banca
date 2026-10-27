@@ -122,7 +122,7 @@ async function projectCatalogItems(
     const product = byAbsoluteName(products, "produtos", productId);
     const reparteId = String(stock?.data.reparteId ?? "");
     const reparte = byAbsoluteName(repartes, "repartes", reparteId);
-    if (!list || !stock || !product || !reparte || list.data.status !== "PUBLICADA" || list.data.bancaId !== ctx.env.BANCA_ID || stock.data.bancaId !== ctx.env.BANCA_ID || stock.data.status === "ARQUIVADO" || reparte.data.status !== "ATIVO") return [];
+    if (!list || !stock || !product || !reparte || list.data.status !== "PUBLICADA" || list.data.bancaId !== ctx.env.BANCA_ID || stock.data.bancaId !== ctx.env.BANCA_ID || stock.data.status === "ARQUIVADO" || reparte.data.bancaId !== ctx.env.BANCA_ID || reparte.data.status !== "ATIVO") return [];
     const received = Number(stock.data.quantidadeRecebida ?? 0);
     const reserved = Number(stock.data.quantidadeReservada ?? 0);
     const withdrawn = Number(stock.data.quantidadeRetirada ?? 0);
