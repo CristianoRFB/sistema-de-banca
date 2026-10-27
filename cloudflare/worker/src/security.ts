@@ -231,7 +231,12 @@ export async function requireAdmin(
   const user = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}/usuarios/${claims.sub}`);
   const role = user?.data.papel as TenantRole | undefined;
   const validTenantRole = role === "ADMIN" || role === "OPERADOR" || role === "TENANT_OWNER" || role === "STAFF";
-  if (user && user.data.ativo === true && validTenantRole && allowedRoles.includes(role)) {
+  const permissionRole: TenantRole | undefined = role === "TENANT_OWNER"
+    ? "ADMIN"
+    : role === "STAFF"
+      ? "OPERADOR"
+      : role;
+  if (user && user.data.ativo === true && validTenantRole && permissionRole && allowedRoles.includes(permissionRole)) {
     return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
   }
 
