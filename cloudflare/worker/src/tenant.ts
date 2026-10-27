@@ -4,6 +4,18 @@ import type { FirestoreRest } from "./firebase/firestore-rest";
 const TENANT_API_ROUTE = /^\/api\/t\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/(public|client|admin)(\/.*)?$/;
 const LEGACY_API_ROUTE = /^\/api\/(public|client|admin)(?:\/.*)?$/;
 
+const RESERVED_TENANT_SLUGS = new Set(["admin", "api", "catalogo", "cliente", "localizacao", "produto"]);
+
+/** Root routes reserved for platform administration, legacy redirects and the API. */
+export function validateTenantSlugForCreation(input: unknown): string {
+  const slug = String(input ?? "").trim().toLocaleLowerCase("pt-BR");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(slug) || RESERVED_TENANT_SLUGS.has(slug)) {
+    throw new HttpError({ code: "invalid_tenant_slug", message: "Tenant slug is invalid or reserved.", status: 400 });
+  }
+  return slug;
+}
+
+
 function tenantFromDocument(document: FirestoreDocument, legacyFallback: boolean): TenantContext {
   const slug = String(document.data.slug ?? document.id).trim().toLocaleLowerCase("pt-BR");
   return {
