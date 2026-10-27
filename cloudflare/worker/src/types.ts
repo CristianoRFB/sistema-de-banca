@@ -1,4 +1,4 @@
-export type Bindings = Env;
+export type Bindings = Omit<Env, "BANCA_ID"> & { BANCA_ID?: string };
 
 export type JsonObject = Record<string, unknown>;
 
@@ -30,6 +30,14 @@ export class HttpError extends Error {
   }
 }
 
+export interface TenantContext {
+  id: string;
+  slug: string;
+  name: string;
+  active: boolean;
+  legacyFallback: boolean;
+}
+
 export interface AdminIdentity {
   uid: string;
   role: "ADMIN" | "OPERADOR";
@@ -49,4 +57,5 @@ export interface RequestContext {
   env: Bindings;
   db: import("./firebase/firestore-rest").FirestoreRest;
   corsOrigin: string | null;
+  tenant: TenantContext;
 }
