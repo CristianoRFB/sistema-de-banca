@@ -2,6 +2,7 @@ export type Bindings = Omit<Env, "BANCA_ID"> & { BANCA_ID?: string };
 export type ScopedBindings = Bindings & { BANCA_ID: string };
 
 export type JsonObject = Record<string, unknown>;
+export type TenantRole = "ADMIN" | "OPERADOR" | "TENANT_OWNER" | "STAFF";
 
 export interface FirestoreDocument {
   name: string;
@@ -41,7 +42,14 @@ export interface TenantContext {
 
 export interface AdminIdentity {
   uid: string;
-  role: "ADMIN" | "OPERADOR";
+  role: TenantRole | "PLATFORM_OWNER";
+  claims: JsonObject;
+  platformOverride?: boolean;
+}
+
+export interface PlatformIdentity {
+  uid: string;
+  role: "PLATFORM_OWNER";
   claims: JsonObject;
 }
 
