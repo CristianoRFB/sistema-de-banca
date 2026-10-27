@@ -115,37 +115,42 @@ const worker = {
 
     execution.waitUntil((async () => {
       const tenants = await listActiveTenants(db);
-      const tenantResults = await Promise.allSettled(tenants.map(async (tenant) => {
-        const scopedEnv = scopeEnvForTenant(env, tenant.id);
-        const results = await Promise.allSettled([
-          processExpiredReservations(db, scopedEnv, now),
-          processReminders(db, scopedEnv, now),
-          processRecollections(db, scopedEnv, now),
-        ]);
-        results.forEach((result, index) => {
+      // Bound per-tenant fanout: thousands of tenants must not start all jobs at once.
+      const TENANT_BATCH_SIZE = 8;
+      for (let offset = 0; offset < tenants.length; offset += TENANT_BATCH_SIZE) {
+        const batch = tenants.slice(offset, offset + TENANT_BATCH_SIZE);
+        const tenantResults = await Promise.allSettled(batch.map(async (tenant) => {
+          const scopedEnv = scopeEnvForTenant(env, tenant.id);
+          const results = await Promise.allSettled([
+            processExpiredReservations(db, scopedEnv, now),
+            processReminders(db, scopedEnv, now),
+            processRecollections(db, scopedEnv, now),
+          ]);
+          results.forEach((result, index) => {
+            if (result.status === "rejected") {
+              console.error(JSON.stringify({
+                event: "scheduled_job_failed",
+                cron: event.cron,
+                tenantId: tenant.id,
+                tenantSlug: tenant.slug,
+                job: index,
+                message: result.reason instanceof Error ? result.reason.message : "unknown_error",
+              }));
+            }
+          });
+        }));
+
+        tenantResults.forEach((result, index) => {
           if (result.status === "rejected") {
             console.error(JSON.stringify({
-              event: "scheduled_job_failed",
+              event: "scheduled_tenant_failed",
               cron: event.cron,
-              tenantId: tenant.id,
-              tenantSlug: tenant.slug,
-              job: index,
+              tenantId: batch[index]?.id ?? "unknown",
               message: result.reason instanceof Error ? result.reason.message : "unknown_error",
             }));
           }
         });
-      }));
-
-      tenantResults.forEach((result, index) => {
-        if (result.status === "rejected") {
-          console.error(JSON.stringify({
-            event: "scheduled_tenant_failed",
-            cron: event.cron,
-            tenantId: tenants[index]?.id ?? "unknown",
-            message: result.reason instanceof Error ? result.reason.message : "unknown_error",
-          }));
-        }
-      });
+      }
     })());
   },
 };
