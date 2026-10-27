@@ -65,6 +65,8 @@ export function HomePage() {
 
   const catalogLoading = loadedCatalogAttempt !== catalogAttempt;
   const visibleSource = catalogLoading ? 'loading' : source;
+  const tenantName = profile?.nomeExibicao || BANCA.name;
+  const tenantInitials = tenantName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toLocaleUpperCase('pt-BR') ?? '').join('');
 
   useEffect(() => {
     let active = true;
@@ -113,8 +115,8 @@ export function HomePage() {
         </div>
         <div className="hero-art" aria-label="Ilustração gráfica editorial da banca">
           <div className="hero-art__sun" />
-          <div className="hero-art__vertical">{(profile?.nomeExibicao || BANCA.name).toLocaleUpperCase('pt-BR')} · {slug.toLocaleUpperCase('pt-BR')}</div>
-          <div className="hero-art__number">AM<br /><span>17</span></div>
+          <div className="hero-art__vertical">{tenantName.toLocaleUpperCase('pt-BR')} · {slug.toLocaleUpperCase('pt-BR')}</div>
+          <div className="hero-art__number">{tenantInitials || 'B'}<br /><span>77</span></div>
           <div className="hero-art__stamp">NOVAS<br />HISTÓRIAS<br /><b>TODO DIA</b></div>
           <div className="hero-art__line" />
           <div className="hero-art__caption">Uma banca.<br />Muitas jornadas.</div>
