@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlatformAdminPage } from '../../src/pages/platform/PlatformAdminPage';
@@ -19,6 +19,7 @@ vi.mock('../../src/infra/browser/api-client', () => ({
 vi.mock('../../src/infra/firebase/auth', () => ({ logoutAdmin: vi.fn() }));
 
 describe('Platform Owner membership administration', () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
   let membershipActive = true;
   let supportActive = false;
 
