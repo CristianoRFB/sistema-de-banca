@@ -224,33 +224,33 @@ export async function requirePlatformOwner(ctx: RequestContext): Promise<Platfor
   return { uid: claims.sub, role: "PLATFORM_OWNER", claims: claims as Record<string, unknown> };
 }
 
+/**
+ * Memberships are tenant-local: an active platform owner alone is never a
+ * substitute for explicit authorization to the tenant's operational records.
+ */
+export function authorizedTenantMembershipRole(
+  membership: Record<string, unknown> | undefined,
+  allowedRoles: TenantRole[],
+): TenantRole | null {
+  if (!membership || membership.ativo !== true) return null;
+  const role = membership.papel;
+  if (role !== "ADMIN" && role !== "OPERADOR" && role !== "TENANT_OWNER" && role !== "STAFF") return null;
+  const permissionRole = role === "TENANT_OWNER" ? "ADMIN" : role === "STAFF" ? "OPERADOR" : role;
+  return allowedRoles.includes(permissionRole) ? role : null;
+}
+
 export async function requireAdmin(
   ctx: RequestContext,
   allowedRoles: TenantRole[] = ["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"],
 ): Promise<AdminIdentity> {
   const claims = await verifyFirebaseIdToken(bearerToken(ctx), ctx.env.FIREBASE_PROJECT_ID);
   const user = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}/usuarios/${claims.sub}`);
-  const role = user?.data.papel as TenantRole | undefined;
-  const validTenantRole = role === "ADMIN" || role === "OPERADOR" || role === "TENANT_OWNER" || role === "STAFF";
-  const permissionRole: TenantRole | undefined = role === "TENANT_OWNER"
-    ? "ADMIN"
-    : role === "STAFF"
-      ? "OPERADOR"
-      : role;
-  if (user && user.data.ativo === true && validTenantRole && permissionRole && allowedRoles.includes(permissionRole)) {
-    return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
-  }
+  const role = authorizedTenantMembershipRole(user?.data, allowedRoles);
+  if (role) return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
 
-  const platformOwner = await ctx.db.get(`platformOwners/${claims.sub}`);
-  if (platformOwner?.data.ativo === true) {
-    return {
-      uid: claims.sub,
-      role: "PLATFORM_OWNER",
-      claims: claims as Record<string, unknown>,
-      platformOverride: true,
-    };
-  }
-
+  // Platform-wide credentials authorize only /api/platform/*.
+  // Access to a tenant's operational API requires an explicit active tenant
+  // membership, which is managed and audited through the platform API.
   throw new HttpError({ code: "admin_forbidden", message: "This account is not authorized for this bank operation.", status: 403 });
 }
 
