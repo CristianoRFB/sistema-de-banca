@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { listActiveTenants, resolveRequestTenant, validateTenantSlugForCreation } from "../../cloudflare/worker/src/tenant";
-import { hashCustomerPhone, rateLimit } from "../../cloudflare/worker/src/security";
+import { authorizedTenantMembershipRole, hashCustomerPhone, rateLimit } from "../../cloudflare/worker/src/security";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
 import type { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-rest";
 
@@ -225,5 +225,23 @@ describe("scheduled tenant discovery", () => {
       code: "tenant_pagination_error",
       status: 500,
     });
+  });
+});
+
+describe("tenant-local admin authorization", () => {
+  const manage = ["ADMIN"] as const;
+  const read = ["ADMIN", "OPERADOR"] as const;
+  it("rejects absent, inactive, and invalid memberships", () => {
+    expect(authorizedTenantMembershipRole(undefined, [...read])).toBeNull();
+    expect(authorizedTenantMembershipRole({ papel: "TENANT_OWNER", ativo: false }, [...read])).toBeNull();
+    expect(authorizedTenantMembershipRole({ papel: "PLATFORM_OWNER", ativo: true }, [...read])).toBeNull();
+    expect(authorizedTenantMembershipRole({ papel: "SUPER_ADMIN", ativo: true }, [...read])).toBeNull();
+  });
+  it("allows only tenant-local roles with the appropriate permissions", () => {
+    expect(authorizedTenantMembershipRole({ papel: "ADMIN", ativo: true }, [...manage])).toBe("ADMIN");
+    expect(authorizedTenantMembershipRole({ papel: "TENANT_OWNER", ativo: true }, [...manage])).toBe("TENANT_OWNER");
+    expect(authorizedTenantMembershipRole({ papel: "OPERADOR", ativo: true }, [...manage])).toBeNull();
+    expect(authorizedTenantMembershipRole({ papel: "STAFF", ativo: true }, [...manage])).toBeNull();
+    expect(authorizedTenantMembershipRole({ papel: "STAFF", ativo: true }, [...read])).toBe("STAFF");
   });
 });
