@@ -261,8 +261,13 @@ export async function requireAdmin(
   ctx: RequestContext,
   allowedRoles: TenantRole[] = ["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"],
 ): Promise<AdminIdentity> {
+  // Defense in depth: every admin authorization must use the tenant resolved
+  // by the request router, never a mismatched legacy or caller-provided ID.
+  if (ctx.env.BANCA_ID !== ctx.tenant.id) {
+    throw new HttpError({ code: "tenant_context_mismatch", message: "Tenant context is inconsistent.", status: 500 });
+  }
   const claims = await verifyFirebaseIdToken(bearerToken(ctx), ctx.env.FIREBASE_PROJECT_ID);
-  const user = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}/usuarios/${claims.sub}`);
+  const user = await ctx.db.get(`bancas/${ctx.tenant.id}/usuarios/${claims.sub}`);
   const role = authorizedTenantMembershipRole(user?.data, allowedRoles);
   if (role) return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
 
