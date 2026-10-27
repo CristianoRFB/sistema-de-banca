@@ -1,19 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, MapPin, Search, Sparkles } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { BANCA } from '../../app/config';
+import { normalizeTenantSlug, tenantPath } from '../../app/tenant';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import type { HorarioFuncionamento } from '../../domain/entities/HorarioFuncionamento';
 import { validarHorarioBanca } from '../../domain/rules/validarHorarioBanca';
 import { obterPerfilPublicoBanca } from '../../features/banca/banca.service';
+import type { PerfilPublicoBanca } from '../../features/banca/banca.repository';
 import { ProdutoCardTipografico } from '../../features/catalogo/components/ProdutoCardTipografico';
 import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
 
 export function HomePage() {
   const navigate = useNavigate();
+  const { tenantSlug } = useParams();
+  const slug = normalizeTenantSlug(tenantSlug);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<ProdutoCatalogo[]>([]);
   const [lowStockItems, setLowStockItems] = useState<ProdutoCatalogo[]>([]);
@@ -21,6 +25,7 @@ export function HomePage() {
   const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [loadedCatalogAttempt, setLoadedCatalogAttempt] = useState(-1);
   const [hours, setHours] = useState<HorarioFuncionamento[] | null>(null);
+  const [profile, setProfile] = useState<PerfilPublicoBanca | null>(null);
   const [hoursState, setHoursState] = useState<'loading' | 'ready' | 'failure'>('loading');
   const [now, setNow] = useState(() => new Date());
 
@@ -35,7 +40,7 @@ export function HomePage() {
   useEffect(() => {
     let active = true;
     obterPerfilPublicoBanca().then((profile) => {
-      if (active) { setHours(profile.horarios); setHoursState('ready'); }
+      if (active) { setProfile(profile); setHours(profile.horarios); setHoursState('ready'); }
     }).catch(() => {
       if (active) { setHours(null); setHoursState('failure'); }
     });
@@ -85,14 +90,14 @@ export function HomePage() {
     event.preventDefault();
     const params = new URLSearchParams();
     if (query.trim()) params.set('q', query.trim());
-    navigate(`/catalogo${params.size ? `?${params}` : ''}`);
+    navigate(tenantPath(slug, `catalogo${params.size ? `?${params}` : ''}`));
   }
 
   return (
     <div className="home-page">
       <section className="hero-band">
         <div className="hero-copy">
-          <div className="hero-kicker"><span className="status-dot" /> Santa Fé do Sul · desde sempre por aqui</div>
+          <div className="hero-kicker"><span className="status-dot" /> {profile?.endereco || BANCA.city}</div>
           <p className="hero-index">BANCA DE LEITURA <span>001 / SFDS</span></p>
           <h1>Histórias<br />que <em>chegam</em><br />até você.</h1>
           <p className="hero-description">Seu próximo volume favorito pode estar a poucos passos. Explore as novidades da banca.</p>
@@ -102,13 +107,13 @@ export function HomePage() {
             <button type="submit" aria-label="Buscar"><ArrowRight size={19} /></button>
           </form>
           <div className="hero-actions">
-            <Link className="button button--dark" to="/catalogo">Explorar catálogo <ArrowUpRight size={17} /></Link>
-            <Link className="hero-text-link" to="/localizacao"><MapPin size={16} /> Como chegar</Link>
+            <Link className="button button--dark" to={tenantPath(slug, 'catalogo')}>Explorar catálogo <ArrowUpRight size={17} /></Link>
+            <Link className="hero-text-link" to={tenantPath(slug, 'localizacao')}><MapPin size={16} /> Como chegar</Link>
           </div>
         </div>
         <div className="hero-art" aria-label="Ilustração gráfica editorial da banca">
           <div className="hero-art__sun" />
-          <div className="hero-art__vertical">ANA MARIA · SANTA FÉ DO SUL · ANA MARIA ·</div>
+          <div className="hero-art__vertical">{(profile?.nomeExibicao || BANCA.name).toLocaleUpperCase('pt-BR')} · {slug.toLocaleUpperCase('pt-BR')}</div>
           <div className="hero-art__number">AM<br /><span>17</span></div>
           <div className="hero-art__stamp">NOVAS<br />HISTÓRIAS<br /><b>TODO DIA</b></div>
           <div className="hero-art__line" />
@@ -121,7 +126,7 @@ export function HomePage() {
       {lowStockItems.length > 0 && <section className="content-section low-stock-section" aria-labelledby="low-stock-title">
         <div className="section-heading">
           <div><p className="eyebrow section-eyebrow">PRATELEIRA / POUCAS UNIDADES</p><h2 id="low-stock-title">Últimos exemplares,<br /><em>por enquanto.</em></h2></div>
-          <Link className="section-link" to="/catalogo">Explorar catálogo <ArrowRight size={17} /></Link>
+          <Link className="section-link" to={tenantPath(slug, 'catalogo')}>Explorar catálogo <ArrowRight size={17} /></Link>
         </div>
         <div className="product-grid">{lowStockItems.map((item, index) => <ProdutoCardTipografico key={item.itemReparteId} produto={item} index={index} />)}</div>
       </section>}
@@ -134,7 +139,7 @@ export function HomePage() {
             <p className="eyebrow section-eyebrow"><Sparkles size={15} /> ACABOU DE CHEGAR</p>
             <h2 id="new-arrivals-title">Capítulos novos,<br /><em>todo dia.</em></h2>
           </div>
-          <Link className="section-link" to="/catalogo">Ver catálogo completo <ArrowRight size={17} /></Link>
+          <Link className="section-link" to={tenantPath(slug, 'catalogo')}>Ver catálogo completo <ArrowRight size={17} /></Link>
         </div>
         {visibleSource === 'loading' ? (
           <div className="empty-catalog" role="status" aria-live="polite"><span className="empty-catalog__number" aria-hidden="true">…</span><div><h3>Carregando as novidades.</h3><p>Buscando os títulos publicados pela banca.</p></div></div>
@@ -148,7 +153,7 @@ export function HomePage() {
           <div className="empty-catalog">
             <span className="empty-catalog__number">—</span>
             <div><h3>Estamos preparando o catálogo.</h3><p>Enquanto isso, fale com a banca pelo WhatsApp e pergunte pelas novidades.</p></div>
-            <a className="button button--secondary" href={`https://wa.me/${BANCA.phoneDigits}`} target="_blank" rel="noreferrer">Chamar no WhatsApp ↗</a>
+            <a className="button button--secondary" href={'https://wa.me/' + ((profile?.telefone || BANCA.phone).replace(/\D/g, ''))} target="_blank" rel="noreferrer">Chamar no WhatsApp ↗</a>
           </div>
         )}
       </section>
@@ -156,14 +161,14 @@ export function HomePage() {
       <section className="explore-strip">
         <div className="explore-strip__mark">読</div>
         <div><p className="eyebrow">LEITURA É CAMINHO</p><h2>Tem espaço para<br />mais uma história.</h2></div>
-        <Link to="/catalogo" className="round-link" aria-label="Explorar catálogo"><ArrowRight /></Link>
+        <Link to={tenantPath(slug, 'catalogo')} className="round-link" aria-label="Explorar catálogo"><ArrowRight /></Link>
         <span className="explore-strip__side">ENCONTRE SEU PRÓXIMO FAVORITO</span>
       </section>
 
       <section className="visit-section">
         <div className="visit-section__label"><span className="eyebrow">04 · APAREÇA</span><Badge tone={openStatus === 'open' ? 'lime' : 'muted'}>{openStatus === 'open' ? 'Aberta agora' : openStatus === 'closed' ? 'Fechada agora' : hoursState === 'loading' ? 'Consultando horários' : 'Horário indisponível'}</Badge></div>
-        <div className="visit-section__body"><h2>Seu ponto<br />de parada.</h2><p>Um lugar para encontrar o próximo volume, trocar indicações e descobrir o que acabou de chegar.</p><Link className="button button--dark" to="/localizacao">Endereço e horários <ArrowRight size={17} /></Link></div>
-        <div className="visit-section__address"><MapPin size={19} /><span>{BANCA.address}</span></div>
+        <div className="visit-section__body"><h2>Seu ponto<br />de parada.</h2><p>Um lugar para encontrar o próximo volume, trocar indicações e descobrir o que acabou de chegar.</p><Link className="button button--dark" to={tenantPath(slug, 'localizacao')}>Endereço e horários <ArrowRight size={17} /></Link></div>
+        <div className="visit-section__address"><MapPin size={19} /><span>{profile?.endereco || BANCA.address}</span></div>
       </section>
     </div>
   );
