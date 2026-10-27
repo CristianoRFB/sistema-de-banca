@@ -1,7 +1,7 @@
 import { hashClientSessionToken } from "./security";
 import type { RequestContext } from "./types";
 import type { FirestoreTransaction } from "./firebase/firestore-rest";
-import { HttpError, type Bindings, type FirestoreDocument, type JsonObject } from "./types";
+import { HttpError, type FirestoreDocument, type JsonObject, type ScopedBindings } from "./types";
 
 export function jsonResponse(ctx: RequestContext, payload: unknown, status = 200): Response {
   const headers = new Headers({
@@ -168,7 +168,7 @@ export function query(collectionId: string, filters: JsonObject[], limit: number
   };
 }
 
-export async function catalogRowsForStocks(transaction: FirestoreTransaction, env: Bindings, itemReparteIds: string[]): Promise<Map<string, FirestoreDocument[]>> {
+export async function catalogRowsForStocks(transaction: FirestoreTransaction, env: ScopedBindings, itemReparteIds: string[]): Promise<Map<string, FirestoreDocument[]>> {
   const rows = new Map<string, FirestoreDocument[]>();
   for (const itemReparteId of [...new Set(itemReparteIds)]) {
     const documents = await transaction.query("itensLista", query("itensLista", [
