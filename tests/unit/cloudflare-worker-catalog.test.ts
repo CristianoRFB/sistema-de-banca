@@ -148,6 +148,7 @@ async function requestCatalog(db: CatalogFirestore, query: string): Promise<{ it
     env,
     db: db as unknown as FirestoreRest,
     corsOrigin: null,
+  tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false },
   };
   const response = await handlePublicRoute(context);
   if (!response) throw new Error('Expected the public catalog route to handle this request.');
@@ -201,6 +202,7 @@ describe('Cloudflare Worker public catalog', () => {
       env,
       db: new CatalogFirestore() as unknown as FirestoreRest,
       corsOrigin: null,
+    tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false },
     };
 
     const response = await handlePublicRoute(context);
