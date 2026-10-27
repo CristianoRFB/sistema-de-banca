@@ -11,6 +11,7 @@
 - Platform Owner server-side em `platformOwners/{uid}`;
 - API e console mínimo de Platform Owner;
 - validação de membership antes do painel local;
+- suporte temporário de leitura para Platform Owner, com expiração, revogação e auditoria de concessão/revogação (sem consentimento separado do tenant);
 - índice de telefone v2 tenant-scoped;
 - script de migração aditiva;
 - bootstrap de white-label básico;
