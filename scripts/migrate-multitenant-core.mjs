@@ -49,14 +49,14 @@ function tenantPhoneHash(phone) {
 }
 
 async function getDocument(path) {
-  const response = await fetch(`${base}/${path}`, { headers: { authorization: `Bearer ${accessToken}` } });
+  const response = await globalThis.fetch(`${base}/${path}`, { headers: { authorization: `Bearer ${accessToken}` } });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Firestore read failed for ${path} (HTTP ${response.status}).`);
   return response.json();
 }
 
 async function queryClients() {
-  const response = await fetch(`${base}:runQuery`, {
+  const response = await globalThis.fetch(`${base}:runQuery`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -82,7 +82,7 @@ async function patchTenant() {
   url.searchParams.append('updateMask.fieldPaths', 'slug');
   url.searchParams.append('updateMask.fieldPaths', 'ativo');
   url.searchParams.append('updateMask.fieldPaths', 'atualizadoEm');
-  const response = await fetch(url, {
+  const response = await globalThis.fetch(url, {
     method: 'PATCH',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -114,7 +114,7 @@ async function createPhoneIndex(client) {
   const url = new URL(`${base}/indiceTelefonesClientes`);
   url.searchParams.set('documentId', documentId);
   const now = new Date().toISOString();
-  const response = await fetch(url, {
+  const response = await globalThis.fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -137,7 +137,7 @@ if (!tenant) throw new Error('The requested banca document does not exist. Nothi
 const clients = await queryClients();
 const preview = await Promise.all(clients.map(createPhoneIndex));
 
-console.log(JSON.stringify({
+globalThis.console.log(JSON.stringify({
   mode: apply ? 'APPLY' : 'DRY_RUN',
   projectId,
   bankId,
@@ -150,9 +150,9 @@ console.log(JSON.stringify({
 }, null, 2));
 
 if (!apply) {
-  console.log('Dry-run only. Re-run with APPLY=1 after reviewing the output.');
+  globalThis.console.log('Dry-run only. Re-run with APPLY=1 after reviewing the output.');
   process.exit(0);
 }
 
 await patchTenant();
-console.log('Multi-tenant additive migration completed. Legacy records were preserved.');
+globalThis.console.log('Multi-tenant additive migration completed. Legacy records were preserved.');
