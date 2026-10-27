@@ -13,9 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/banca-mark.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-icon.png'],
       manifest: {
-        name: 'Banca Ana Maria',
-        short_name: 'Ana Maria',
-        description: 'Catálogo e reservas da Banca Ana Maria, em Santa Fé do Sul.',
+        name: 'SaaS Banca',
+        short_name: 'Banca',
+        description: 'Catálogo, reservas e operação de bancas em uma plataforma multi-tenant.',
         start_url: '/',
         scope: '/',
         display: 'standalone',
