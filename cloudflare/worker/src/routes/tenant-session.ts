@@ -10,6 +10,7 @@ export async function handleTenantSessionRoute(ctx: RequestContext): Promise<Res
       uid: identity.uid,
       role: identity.role,
       platformOverride: identity.platformOverride === true,
+      supportExpiresAt: identity.supportExpiresAt ?? null,
       tenant: {
         id: ctx.tenant.id,
         slug: ctx.tenant.slug,
