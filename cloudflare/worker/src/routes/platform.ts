@@ -188,7 +188,7 @@ async function grantSupport(ctx: RequestContext, actor: PlatformIdentity, tenant
   const body = await readJsonBody(ctx.request, 4_000);
   const durationMinutes = body.durationMinutes;
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-  if (!SUPPORT_GRANT_MINUTES.has(Number(durationMinutes)) || !Number.isInteger(durationMinutes)) {
+  if (typeof durationMinutes !== "number" || !SUPPORT_GRANT_MINUTES.has(durationMinutes)) {
     throw new HttpError({ code: "invalid_support_duration", message: "Duration must be 15, 30 or 60 minutes.", status: 400 });
   }
   if (reason.length < 12 || reason.length > 300) {
