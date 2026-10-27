@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveRequestTenant } from "../../cloudflare/worker/src/tenant";
-import { hashCustomerPhone } from "../../cloudflare/worker/src/security";
-import { HttpError, type Bindings, type FirestoreDocument, type JsonObject } from "../../cloudflare/worker/src/types";
+import { hashCustomerPhone, rateLimit } from "../../cloudflare/worker/src/security";
+import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
 import type { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-rest";
 
 function document(id: string, data: JsonObject): FirestoreDocument {
@@ -105,4 +105,70 @@ describe("tenant resolver", () => {
     expect(tenantA.tenant.id).not.toBe(tenantB.tenant.id);
   });
 
+});
+
+
+describe("tenant-isolated rate limiting", () => {
+  function requestContext(tenantId: string, scopeIp = "203.0.113.44") {
+    const keys: string[] = [];
+    const env = {
+      ...baseEnv,
+      BANCA_ID: tenantId,
+      CLIENT_RATE_LIMITER: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: true };
+        },
+      },
+    } as unknown as RequestContext["env"];
+    const request = new Request("https://example.test/api/t/banca/public/catalog", {
+      headers: { "cf-connecting-ip": scopeIp },
+    });
+    const ctx = {
+      request,
+      url: new URL(request.url),
+      env,
+      db: {} as FirestoreRest,
+      corsOrigin: null,
+      tenant: { id: tenantId, slug: tenantId, name: tenantId, active: true, legacyFallback: false },
+    } satisfies RequestContext;
+    return { ctx, keys };
+  }
+
+  it("does not share the same IP/scope quota across tenant A and tenant B", async () => {
+    const a = requestContext("tenant-a");
+    const b = requestContext("tenant-b");
+    await rateLimit(a.ctx, "public-search");
+    await rateLimit(b.ctx, "public-search");
+    expect(a.keys).toHaveLength(1);
+    expect(b.keys).toHaveLength(1);
+    expect(a.keys[0]).not.toBe(b.keys[0]);
+  });
+
+  it("keeps a stable key per tenant/IP/scope and distinguishes request scopes", async () => {
+    const a = requestContext("tenant-a");
+    await rateLimit(a.ctx, "client-read");
+    await rateLimit(a.ctx, "client-read");
+    await rateLimit(a.ctx, "client-write");
+    expect(a.keys[0]).toBe(a.keys[1]);
+    expect(a.keys[0]).not.toBe(a.keys[2]);
+    expect(a.keys[0]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it("continues to fail closed when the limiter is missing or denies a request", async () => {
+    const missing = requestContext("tenant-a");
+    const missingEnv = { ...missing.ctx.env, CLIENT_RATE_LIMITER: undefined };
+    await expect(rateLimit({ ...missing.ctx, env: missingEnv }, "public-search")).rejects.toMatchObject({
+      code: "rate_limit_unavailable",
+      status: 503,
+    });
+    const denied = requestContext("tenant-a");
+    denied.ctx.env.CLIENT_RATE_LIMITER = {
+      limit: async () => ({ success: false }),
+    } as RequestContext["env"]["CLIENT_RATE_LIMITER"];
+    await expect(rateLimit(denied.ctx, "public-search")).rejects.toMatchObject({
+      code: "rate_limited",
+      status: 429,
+    });
+  });
 });
