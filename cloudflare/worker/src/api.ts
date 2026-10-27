@@ -104,7 +104,8 @@ export async function prepareIdempotency(ctx: RequestContext, transaction: Fires
     throw new HttpError({ code: "idempotency_key_required", message: "Send an Idempotency-Key header with 8 to 128 characters.", status: 400 });
   }
   const fingerprint = await requestFingerprint(body);
-  const docId = await hashClientSessionToken(ctx.env, `operation:v1:${scope}:${key}`);
+  // Tenant-bound operation IDs prevent replay collisions when an operator manages multiple bancas.
+  const docId = await hashClientSessionToken(ctx.env, `operation:v2:${ctx.tenant.id}:${scope}:${key}`);
   const path = `idempotency/${docId}`;
   const existing = await transaction.get(path);
   if (!existing) return { path, fingerprint };
