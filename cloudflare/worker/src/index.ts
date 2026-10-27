@@ -6,6 +6,7 @@ import { processReminders } from "./jobs/process-reminders";
 import { handleAdminRoute } from "./routes/admin";
 import { handleClientRoute } from "./routes/client";
 import { handlePublicRoute } from "./routes/public";
+import { handlePlatformRoute } from "./routes/platform";
 import { allowedOrigin } from "./security";
 import { listActiveTenants, resolveRequestTenant, scopeEnvForTenant } from "./tenant";
 import { HttpError, type Bindings, type RequestContext } from "./types";
@@ -68,6 +69,21 @@ const worker = {
       }
 
       const db = new FirestoreRest(env);
+
+      if (requestUrl.pathname.startsWith("/api/platform/")) {
+        ctx = {
+          request,
+          url: requestUrl,
+          env: scopeEnvForTenant(env, "platform"),
+          db,
+          corsOrigin,
+          tenant: { id: "platform", slug: "platform", name: "Platform", active: true, legacyFallback: false },
+        };
+        const platformResponse = await handlePlatformRoute(ctx);
+        if (platformResponse) return platformResponse;
+        throw new HttpError({ code: "not_found", message: "Platform API route was not found.", status: 404 });
+      }
+
       const resolved = await resolveRequestTenant(db, requestUrl, env);
       ctx = {
         request,
