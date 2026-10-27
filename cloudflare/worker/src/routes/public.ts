@@ -62,9 +62,10 @@ function decodeCursor(value: string): unknown {
   }
 }
 
+// Cursor signatures are bound to the tenant; a valid cursor from banca A is invalid in banca B.
 async function makeCatalogCursor(ctx: RequestContext, id: string, value: string, filters: CatalogCursorFilters): Promise<string> {
   const { nameQuery, productType, availabilityFilter, sort } = filters;
-  const signature = await hashClientSessionToken(ctx.env, `catalog-cursor:v2:${nameQuery}:${productType}:${availabilityFilter}:${sort}:${value}:${id}`);
+  const signature = await hashClientSessionToken(ctx.env, `catalog-cursor:v3:${ctx.tenant.id}:${nameQuery}:${productType}:${availabilityFilter}:${sort}:${value}:${id}`);
   return encodeCursor({ id, value, nameQuery, productType, availabilityFilter, sort, signature });
 }
 
@@ -77,7 +78,7 @@ async function readCatalogCursor(ctx: RequestContext, value: string | null, filt
   const cursor = decoded as { id: string; value: string; nameQuery: string; productType: string; availabilityFilter: string; sort: string; signature: string };
   const { id, value: cursorValue, nameQuery, productType, availabilityFilter, sort, signature } = cursor;
   const { nameQuery: expectedQuery, productType: expectedType, availabilityFilter: expectedAvailability, sort: expectedSort } = filters;
-  const signatureIsValid = await verifyClientSessionSignature(ctx.env, `catalog-cursor:v2:${nameQuery}:${productType}:${availabilityFilter}:${sort}:${cursorValue}:${id}`, signature);
+  const signatureIsValid = await verifyClientSessionSignature(ctx.env, `catalog-cursor:v3:${ctx.tenant.id}:${nameQuery}:${productType}:${availabilityFilter}:${sort}:${cursorValue}:${id}`, signature);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id) || nameQuery !== expectedQuery || productType !== expectedType || availabilityFilter !== expectedAvailability || sort !== expectedSort || !signatureIsValid) {
     throw new HttpError({ code: "invalid_cursor", message: "cursor is invalid.", status: 400 });
   }
