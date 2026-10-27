@@ -13,6 +13,7 @@ import { adminRepository } from '../../features/admin/admin.repository';
 import { mapAdminItemsToImportedRows, toAdminListItemInput } from '../../features/listas/lista.mappers';
 import { useToast } from '../../components/ui/Toast';
 import { AdminLoadError, AdminLoading } from './AdminCommon';
+import { currentTenantSlug, tenantPanelPath } from '../../app/tenant';
 
 export function RevisarListaPage() {
   const { listaId = '' } = useParams();
@@ -79,10 +80,10 @@ export function RevisarListaPage() {
   const exportable: ExportableList = { title, storeName: 'Banca Ana Maria', items: rows.map((row) => ({ title: row.title, volume: row.volume, price: row.price, quantity: row.quantity, code: row.code })) };
 
   if (loading) return <div className="admin-page"><AdminLoading label="Abrindo lista para revisão…" /></div>;
-  if (failed) return <div className="admin-page"><Link className="back-link" to="/admin/listas"><ArrowLeft size={17} /> Voltar às listas</Link><AdminLoadError onRetry={() => void load()} /></div>;
+  if (failed) return <div className="admin-page"><Link className="back-link" to={tenantPanelPath(currentTenantSlug(), 'listas')}><ArrowLeft size={17} /> Voltar às listas</Link><AdminLoadError onRetry={() => void load()} /></div>;
 
   return <div className="admin-page">
-    <Link className="back-link" to="/admin/listas"><ArrowLeft size={17} /> Todas as listas</Link>
+    <Link className="back-link" to={tenantPanelPath(currentTenantSlug(), 'listas')}><ArrowLeft size={17} /> Todas as listas</Link>
     <header className="admin-page-heading admin-page-heading--stack"><div><span className="eyebrow">REVISÃO / {listaId.slice(0, 8).toUpperCase()}</span><h1>{title}</h1><p>Revise quantidade, volume e confiança antes de publicar no catálogo.</p></div><Badge tone={status === 'PUBLICADA' ? 'lime' : 'orange'}>{status}</Badge></header>
     <div className="review-panel">
       <div className="review-panel__heading"><span className="eyebrow">{rows.length} LINHAS PARA CONFERIR</span><Button variant="secondary" size="small" onClick={() => setPreview((value) => !value)}><Eye size={16} /> {preview ? 'Editar dados' : 'Prévia do cliente'}</Button></div>
@@ -90,6 +91,6 @@ export function RevisarListaPage() {
       <div className="review-actions"><span>{saving ? <><LoaderCircle className="spin" size={14} /> Salvando automaticamente…</> : <><Check size={14} /> Alterações salvas em segundo plano</>}</span><div><Button variant="secondary" disabled={saving} onClick={() => void save()}><Save size={16} /> Salvar agora</Button>{status === 'RASCUNHO' && <Button disabled={saving || publishing} onClick={() => void publish()}><Send size={16} /> {publishing ? 'Publicando…' : 'Publicar catálogo'}</Button>}</div></div>
     </div>
     <div className="export-panel"><ExportarLista list={exportable} /></div>
-    {status === 'PUBLICADA' && <p className="success-note">Esta lista está publicada. Alterações futuras serão auditadas no histórico. <button type="button" className="text-button" onClick={() => navigate('/admin/historico')}>Ver histórico</button></p>}
+    {status === 'PUBLICADA' && <p className="success-note">Esta lista está publicada. Alterações futuras serão auditadas no histórico. <button type="button" className="text-button" onClick={() => navigate(tenantPanelPath(currentTenantSlug(), 'historico'))}>Ver histórico</button></p>}
   </div>;
 }
