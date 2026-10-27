@@ -89,11 +89,32 @@ export async function resolveRequestTenant(
 }
 
 export async function listActiveTenants(db: FirestoreRest): Promise<TenantContext[]> {
-  const rows = await db.query("bancas", {
-    from: [{ collectionId: "bancas" }],
-    limit: 500,
-  });
-  return rows
-    .filter((document) => document.data.ativo !== false)
-    .map((document) => tenantFromDocument(document, false));
+  // A single 500-document query silently skipped later tenants in scheduled jobs.
+  // Paginate deterministically by document name and use an exclusive cursor.
+  const PAGE_SIZE = 100;
+  const tenants: TenantContext[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const rows = await db.query("bancas", {
+      from: [{ collectionId: "bancas" }],
+      orderBy: [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }],
+      limit: PAGE_SIZE,
+      ...(cursor ? { startAt: { values: [{ referenceValue: cursor }], before: false } } : {}),
+    });
+
+    for (const document of rows) {
+      if (document.data.ativo !== false) tenants.push(tenantFromDocument(document, false));
+    }
+
+    if (rows.length < PAGE_SIZE) return tenants;
+    const nextCursor = rows[rows.length - 1]?.name;
+    if (!nextCursor || nextCursor === cursor) {
+      throw new HttpError({
+        code: "tenant_pagination_error",
+        message: "Tenant enumeration did not advance.",
+        status: 500,
+      });
+    }
+    cursor = nextCursor;
+  }
 }
