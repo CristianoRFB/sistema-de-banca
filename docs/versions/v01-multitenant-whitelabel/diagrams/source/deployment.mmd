@@ -1,0 +1,10 @@
+flowchart LR
+  Browser[Browser / PWA] --> Pages[Cloudflare Pages]
+  Browser --> Worker[Cloudflare Worker / API]
+  Worker --> Auth[Firebase Auth verification]
+  Worker --> Firestore[(Firestore)]
+  Cron[Cloudflare Cron] --> Worker
+  Pages -. shared deployment .-> TenantA[Tenant A]
+  Pages -. shared deployment .-> TenantB[Tenant B]
+  Worker -. resolved by slug .-> TenantA
+  Worker -. resolved by slug .-> TenantB
