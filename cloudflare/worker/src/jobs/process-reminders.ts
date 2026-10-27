@@ -1,7 +1,7 @@
 import { compare, eq, firestoreString, query } from "../api";
 import { currentLocalClock, defaultOpeningHours, localDateString } from "../domain";
 import { FirestoreRest } from "../firebase/firestore-rest";
-import type { Bindings, JsonObject } from "../types";
+import type { ScopedBindings, JsonObject } from "../types";
 
 type Reminder = { phase: string; title: string; message: string; target: "CLIENTE" | "ADMIN"; marker: string };
 
@@ -85,7 +85,7 @@ function makeReminders(reservation: JsonObject, now: Date, opening: string | nul
   return reminders;
 }
 
-export async function processReminders(db: FirestoreRest, env: Bindings, now = new Date()): Promise<number> {
+export async function processReminders(db: FirestoreRest, env: ScopedBindings, now = new Date()): Promise<number> {
   const [bank, schedules, reservations] = await Promise.all([
     db.get(`bancas/${env.BANCA_ID}`),
     db.query(`bancas/${env.BANCA_ID}/horarios`, query("horarios", [], 7)),
