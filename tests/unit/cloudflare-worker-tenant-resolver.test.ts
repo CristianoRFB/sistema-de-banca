@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRequestTenant } from "../../cloudflare/worker/src/tenant";
+import { resolveRequestTenant, validateTenantSlugForCreation } from "../../cloudflare/worker/src/tenant";
 import { hashCustomerPhone, rateLimit } from "../../cloudflare/worker/src/security";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
 import type { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-rest";
@@ -170,5 +170,23 @@ describe("tenant-isolated rate limiting", () => {
       code: "rate_limited",
       status: 429,
     });
+  });
+});
+
+describe("tenant slug registration", () => {
+  it("rejects slugs that collide with platform, API and legacy root routes", () => {
+    for (const slug of ["admin", "api", "catalogo", "cliente", "localizacao", "produto"]) {
+      expect(() => validateTenantSlugForCreation(slug)).toThrowError(HttpError);
+      try {
+        validateTenantSlugForCreation(slug);
+      } catch (error) {
+        expect(error).toMatchObject({ code: "invalid_tenant_slug", status: 400 });
+      }
+    }
+  });
+
+  it("accepts valid tenant slugs without changing approved tenant URLs", () => {
+    expect(validateTenantSlugForCreation("Banca-Ana-Maria")).toBe("banca-ana-maria");
+    expect(validateTenantSlugForCreation("banca-beta")).toBe("banca-beta");
   });
 });
