@@ -33,13 +33,13 @@ export function LocalizacaoPage() {
 
   return (
     <div className="location-page page-wrap">
-      <div className="page-kicker"><span className="eyebrow">05 · ENCONTRE A BANCA</span><span className="page-count">SANTA FÉ DO SUL / SP</span></div>
+      <div className="page-kicker"><span className="eyebrow">05 · ENCONTRE A BANCA</span><span className="page-count">{profile?.nomeExibicao || BANCA.name}</span></div>
       <div className="location-layout">
         <section className="location-main">
           <Badge tone="lime">Ponto de encontro dos leitores</Badge>
           <h1>Histórias boas<br />moram <em>perto.</em></h1>
           <p>Venha conhecer os lançamentos, buscar sua reserva ou pedir uma indicação para a próxima leitura.</p>
-          <div className="address-card"><MapPin size={21} /><div><span>ENDEREÇO</span><strong>{address}</strong><small>Santa Fé do Sul · São Paulo</small></div></div>
+          <div className="address-card"><MapPin size={21} /><div><span>ENDEREÇO</span><strong>{address}</strong><small>{profile?.slug || BANCA.city}</small></div></div>
           <a className="button button--dark" href={mapUrl} target="_blank" rel="noreferrer">Abrir rota no mapa <ArrowUpRight size={17} /></a>
         </section>
         <aside className="hours-card">
@@ -49,7 +49,7 @@ export function LocalizacaoPage() {
           <a className="hours-card__whatsapp" href={`https://wa.me/${whatsappPhone}`} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Tire uma dúvida pelo WhatsApp <ArrowUpRight size={15} /></a>
         </aside>
       </div>
-      <div className="location-sign"><span>ANA MARIA</span><b>Rua Sete</b><span>SANTA FÉ DO SUL · BRASIL</span><div className="location-sign__sun">☼</div></div>
+      <div className="location-sign"><span>{(profile?.nomeExibicao || BANCA.name).toLocaleUpperCase('pt-BR')}</span><b>{address}</b><span>{profile?.slug || BANCA.city}</span><div className="location-sign__sun">☼</div></div>
     </div>
   );
 }
