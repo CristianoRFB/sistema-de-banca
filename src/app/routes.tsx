@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAdminAuth } from './providers';
+import { DEFAULT_TENANT_SLUG, normalizeTenantSlug, tenantPanelPath, tenantPath } from './tenant';
 import { PublicShell } from './layouts/PublicShell';
 import { AdminShell } from './layouts/AdminShell';
 
@@ -25,29 +26,62 @@ const HistoricoPage = lazy(() => import('../pages/admin/HistoricoPage').then(({ 
 const NotificacoesAdminPage = lazy(() => import('../pages/admin/NotificacoesAdminPage').then(({ NotificacoesAdminPage: page }) => ({ default: page })));
 const PerfilBancaPage = lazy(() => import('../pages/admin/PerfilBancaPage').then(({ PerfilBancaPage: page }) => ({ default: page })));
 const ConfiguracoesPage = lazy(() => import('../pages/admin/ConfiguracoesPage').then(({ ConfiguracoesPage: page }) => ({ default: page })));
+const PlatformLoginPage = lazy(() => import('../pages/platform/PlatformLoginPage').then(({ PlatformLoginPage: page }) => ({ default: page })));
+const PlatformAdminPage = lazy(() => import('../pages/platform/PlatformAdminPage').then(({ PlatformAdminPage: page }) => ({ default: page })));
 
-function AdminGate() {
+function TenantAdminGate() {
+  const { user, loading } = useAdminAuth();
+  const { tenantSlug } = useParams();
+  const slug = normalizeTenantSlug(tenantSlug);
+  if (loading) return <div className="loading-block">Validando acesso…</div>;
+  return user ? <AdminShell /> : <Navigate to={tenantPanelPath(slug, 'login')} replace />;
+}
+
+function PlatformGate() {
   const { user, loading } = useAdminAuth();
   if (loading) return <div className="loading-block">Validando acesso…</div>;
-  return user ? <AdminShell /> : <Navigate to="/admin/login" replace />;
+  return user ? <Outlet /> : <Navigate to="/admin/login" replace />;
+}
+
+function LegacyRedirect() {
+  const location = useLocation();
+  return <Navigate to={tenantPath(DEFAULT_TENANT_SLUG, location.pathname)} replace />;
+}
+
+function LegacyProductRedirect() {
+  const { itemReparteId } = useParams();
+  return <Navigate to={tenantPath(DEFAULT_TENANT_SLUG, `produto/${encodeURIComponent(itemReparteId ?? '')}`)} replace />;
 }
 
 export function AppRoutes() {
   return <Suspense fallback={<div className="loading-block" role="status">Abrindo a página…</div>}>
     <Routes>
-      <Route element={<PublicShell />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/catalogo" element={<CatalogoPage />} />
-        <Route path="/produto/:itemReparteId" element={<ProdutoPage />} />
-        <Route path="/localizacao" element={<LocalizacaoPage />} />
-        <Route path="/cliente/reservas" element={<MinhasReservasPage />} />
-        <Route path="/cliente/reservas/:reservaId" element={<ReservaDetalhesPage />} />
-        <Route path="/cliente/perfil" element={<PerfilClientePage />} />
-        <Route path="/cliente/notificacoes" element={<NotificacoesClientePage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/" element={<Navigate to={tenantPath(DEFAULT_TENANT_SLUG)} replace />} />
+
+      <Route path="/catalogo" element={<LegacyRedirect />} />
+      <Route path="/localizacao" element={<LegacyRedirect />} />
+      <Route path="/cliente/*" element={<LegacyRedirect />} />
+      <Route path="/produto/:itemReparteId" element={<LegacyProductRedirect />} />
+
+      <Route path="/admin/login" element={<PlatformLoginPage />} />
+      <Route path="/admin" element={<PlatformGate />}>
+        <Route index element={<PlatformAdminPage />} />
       </Route>
-      <Route path="/admin/login" element={<LoginAdminPage />} />
-      <Route path="/admin" element={<AdminGate />}>
+
+      <Route path="/:tenantSlug" element={<PublicShell />}>
+        <Route index element={<HomePage />} />
+        <Route path="catalogo" element={<CatalogoPage />} />
+        <Route path="produto/:itemReparteId" element={<ProdutoPage />} />
+        <Route path="localizacao" element={<LocalizacaoPage />} />
+        <Route path="cliente/reservas" element={<MinhasReservasPage />} />
+        <Route path="cliente/reservas/:reservaId" element={<ReservaDetalhesPage />} />
+        <Route path="cliente/perfil" element={<PerfilClientePage />} />
+        <Route path="cliente/notificacoes" element={<NotificacoesClientePage />} />
+        <Route path="*" element={<Navigate to="." replace />} />
+      </Route>
+
+      <Route path="/:tenantSlug/painel/login" element={<LoginAdminPage />} />
+      <Route path="/:tenantSlug/painel" element={<TenantAdminGate />}>
         <Route index element={<DashboardPage />} />
         <Route path="listas" element={<ListasPage />} />
         <Route path="listas/nova" element={<NovaListaPage />} />
@@ -61,6 +95,8 @@ export function AppRoutes() {
         <Route path="perfil" element={<PerfilBancaPage />} />
         <Route path="configuracoes" element={<ConfiguracoesPage />} />
       </Route>
+
+      <Route path="*" element={<Navigate to={tenantPath(DEFAULT_TENANT_SLUG)} replace />} />
     </Routes>
   </Suspense>;
 }
