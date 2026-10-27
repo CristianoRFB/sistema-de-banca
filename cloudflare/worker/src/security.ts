@@ -239,6 +239,24 @@ export function authorizedTenantMembershipRole(
   return allowedRoles.includes(permissionRole) ? role : null;
 }
 
+/**
+ * Temporary platform support grants are read-only and tenant-bound.
+ * Explicit server-side expiry and active status are mandatory.
+ */
+export function isValidSupportGrant(
+  grant: Record<string, unknown> | undefined,
+  tenantId: string,
+  ownerUid: string,
+  method: string,
+  now = Date.now(),
+): boolean {
+  if (method !== "GET" || !grant || grant.ativo !== true) return false;
+  if (grant.bancaId !== tenantId || grant.uid !== ownerUid) return false;
+  if (typeof grant.expiraEm !== "string") return false;
+  const expiry = Date.parse(grant.expiraEm);
+  return Number.isFinite(expiry) && expiry > now;
+}
+
 export async function requireAdmin(
   ctx: RequestContext,
   allowedRoles: TenantRole[] = ["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"],
@@ -248,9 +266,24 @@ export async function requireAdmin(
   const role = authorizedTenantMembershipRole(user?.data, allowedRoles);
   if (role) return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
 
-  // Platform-wide credentials authorize only /api/platform/*.
-  // Access to a tenant's operational API requires an explicit active tenant
-  // membership, which is managed and audited through the platform API.
+  // Platform Owner never receives implicit tenant access. The explicitly
+  // granted support mode is short-lived, read-only and checked on every request.
+  if (ctx.request.method === "GET") {
+    const platformOwner = await ctx.db.get(`platformOwners/${claims.sub}`);
+    if (platformOwner?.data.ativo === true) {
+      const supportGrant = await ctx.db.get(`bancas/${ctx.tenant.id}/supportGrants/${claims.sub}`);
+      if (isValidSupportGrant(supportGrant?.data, ctx.tenant.id, claims.sub, ctx.request.method)) {
+        return {
+          uid: claims.sub,
+          role: "PLATFORM_OWNER",
+          claims: claims as Record<string, unknown>,
+          platformOverride: true,
+          supportExpiresAt: String(supportGrant?.data.expiraEm),
+        };
+      }
+    }
+  }
+
   throw new HttpError({ code: "admin_forbidden", message: "This account is not authorized for this bank operation.", status: 403 });
 }
 
