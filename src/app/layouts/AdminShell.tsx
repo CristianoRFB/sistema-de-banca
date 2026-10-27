@@ -18,7 +18,7 @@ const adminLinks = [
   { suffix: 'configuracoes', label: 'Configurações', mobileLabel: 'Ajustes', icon: Settings2 },
 ];
 
-export function AdminShell() {
+export function AdminShell({ supportExpiresAt = null }: { supportExpiresAt?: string | null }) {
   const { user } = useAdminAuth();
   const [tenant, setTenant] = useState<TenantBootstrap | null>(null);
   const { tenantSlug } = useParams();
@@ -70,6 +70,12 @@ export function AdminShell() {
             <button className="admin-topbar__action" type="button" onClick={() => void logout()} aria-label="Sair do painel"><LogOut size={15} /> Sair</button>
           </div>
         </header>
+        {supportExpiresAt && (
+          <div role="status" className="form-error">
+            SUPORTE TEMPORÁRIO · Somente leitura · Banca: {tenantName} · Expira em {new Date(supportExpiresAt).toLocaleString('pt-BR')}.
+            Ações de alteração não são autorizadas nesta sessão de suporte.
+          </div>
+        )}
         <main className="admin-content"><Outlet /></main>
       </div>
       <nav className="admin-mobile-nav" aria-label="Navegação administrativa no celular">
