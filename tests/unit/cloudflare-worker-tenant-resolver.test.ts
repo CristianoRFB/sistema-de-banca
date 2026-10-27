@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRequestTenant, validateTenantSlugForCreation } from "../../cloudflare/worker/src/tenant";
+import { listActiveTenants, resolveRequestTenant, validateTenantSlugForCreation } from "../../cloudflare/worker/src/tenant";
 import { hashCustomerPhone, rateLimit } from "../../cloudflare/worker/src/security";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
 import type { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-rest";
@@ -188,5 +188,42 @@ describe("tenant slug registration", () => {
   it("accepts valid tenant slugs without changing approved tenant URLs", () => {
     expect(validateTenantSlugForCreation("Banca-Ana-Maria")).toBe("banca-ana-maria");
     expect(validateTenantSlugForCreation("banca-beta")).toBe("banca-beta");
+  });
+});
+
+describe("scheduled tenant discovery", () => {
+  it("retrieves tenants beyond 500 without scheduling inactive tenants", async () => {
+    const documents = Array.from({ length: 507 }, (_, index) => document(
+      `tenant-${String(index).padStart(4, "0")}`,
+      { slug: `tenant-${String(index).padStart(4, "0")}`, ativo: index !== 120 },
+    ));
+    let pageCount = 0;
+    const db = {
+      async query(_collection: string, structuredQuery: JsonObject): Promise<FirestoreDocument[]> {
+        pageCount += 1;
+        const bound = structuredQuery.startAt as { values: Array<{ referenceValue: string }> } | undefined;
+        const cursor = bound?.values[0]?.referenceValue;
+        const offset = cursor ? documents.findIndex((row) => row.name === cursor) + 1 : 0;
+        if (offset < 0) throw new Error("Unknown Firestore cursor");
+        return documents.slice(offset, offset + Number(structuredQuery.limit));
+      },
+    };
+    const active = await listActiveTenants(db as unknown as FirestoreRest);
+    expect(pageCount).toBeGreaterThan(5);
+    expect(active).toHaveLength(506);
+    expect(active.at(-1)?.id).toBe("tenant-0506");
+    expect(active.some((tenant) => tenant.id === "tenant-0120")).toBe(false);
+  });
+
+  it("fails rather than endlessly repeating a non-advancing cursor", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => document(
+      `tenant-${String(index).padStart(4, "0")}`,
+      { slug: `tenant-${String(index).padStart(4, "0")}`, ativo: true },
+    ));
+    const brokenDb = { query: async () => firstPage };
+    await expect(listActiveTenants(brokenDb as unknown as FirestoreRest)).rejects.toMatchObject({
+      code: "tenant_pagination_error",
+      status: 500,
+    });
   });
 });
