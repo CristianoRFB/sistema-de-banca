@@ -8,6 +8,12 @@ import { Input } from '../../components/ui/Input';
 import { apiRequest, jsonBody } from '../../infra/browser/api-client';
 import { logoutAdmin } from '../../infra/firebase/auth';
 
+interface PlatformMembership {
+  uid: string;
+  role: 'ADMIN' | 'OPERADOR' | 'TENANT_OWNER' | 'STAFF' | null;
+  active: boolean;
+}
+
 interface PlatformTenant {
   id: string;
   slug: string;
@@ -30,6 +36,10 @@ export function PlatformAdminPage() {
   const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [memberships, setMemberships] = useState<PlatformMembership[]>([]);
+  const [membershipUid, setMembershipUid] = useState('');
+  const [membershipRole, setMembershipRole] = useState<'TENANT_OWNER' | 'STAFF' | 'ADMIN' | 'OPERADOR'>('TENANT_OWNER');
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -99,6 +109,49 @@ export function PlatformAdminPage() {
     }
   }
 
+  async function loadMemberships(tenantId: string) {
+    if (!user || !tenantId) return;
+    setWorking(true);
+    setError('');
+    try {
+      const token = await user.getIdToken();
+      const result = await apiRequest<{ memberships: PlatformMembership[] }>(
+        `/platform/tenants/${encodeURIComponent(tenantId)}/memberships`,
+        { headers: authHeaders(token) },
+      );
+      setSelectedTenantId(tenantId);
+      setMemberships(result.memberships);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os acessos.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function saveMembership(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || !selectedTenantId || !membershipUid.trim()) return;
+    setWorking(true);
+    setError('');
+    try {
+      const token = await user.getIdToken();
+      await apiRequest(
+        `/platform/tenants/${encodeURIComponent(selectedTenantId)}/memberships/${encodeURIComponent(membershipUid.trim())}`,
+        {
+          method: 'PUT',
+          headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: membershipRole, active: true }),
+        },
+      );
+      setMembershipUid('');
+      await loadMemberships(selectedTenantId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o acesso.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function logout() {
     await logoutAdmin();
     navigate('/admin/login');
@@ -152,6 +205,9 @@ export function PlatformAdminPage() {
                 <div className="button-row">
                   <Link className="button button--secondary" to={tenantPath(tenant.slug)}><ExternalLink size={15} /> Site</Link>
                   <Link className="button button--secondary" to={tenantPanelPath(tenant.slug)}><ExternalLink size={15} /> Painel</Link>
+                  <Button type="button" variant="secondary" disabled={working} onClick={() => void loadMemberships(tenant.id)}>
+                    Acessos
+                  </Button>
                   <Button type="button" variant="secondary" disabled={working} onClick={() => void toggleTenant(tenant)}>
                     {tenant.active ? 'Desativar' : 'Ativar'}
                   </Button>
@@ -162,6 +218,38 @@ export function PlatformAdminPage() {
           </div>
         )}
       </section>
+
+      {selectedTenantId && (
+        <section className="admin-card">
+          <div className="section-heading">
+            <div><span className="eyebrow">MEMBERSHIPS</span><h2>Acessos do tenant</h2></div>
+            <span>{memberships.length}</span>
+          </div>
+          <form className="form-stack" onSubmit={(event) => void saveMembership(event)}>
+            <label className="field-label">Firebase Auth UID<Input value={membershipUid} onChange={(event) => setMembershipUid(event.target.value)} required /></label>
+            <label className="field-label">Papel
+              <select value={membershipRole} onChange={(event) => setMembershipRole(event.target.value as typeof membershipRole)}>
+                <option value="TENANT_OWNER">Tenant Owner</option>
+                <option value="STAFF">Staff</option>
+                <option value="ADMIN">Admin legado</option>
+                <option value="OPERADOR">Operador legado</option>
+              </select>
+            </label>
+            <Button disabled={working || !membershipUid.trim()}><Plus size={16} /> Salvar acesso</Button>
+          </form>
+          <div className="data-list">
+            {memberships.map((membership) => (
+              <article className="data-list__item" key={membership.uid}>
+                <div>
+                  <b>{membership.uid}</b>
+                  <small>{membership.role ?? 'SEM PAPEL'} · {membership.active ? 'ATIVO' : 'INATIVO'}</small>
+                </div>
+              </article>
+            ))}
+            {!memberships.length && <p className="muted-copy">Nenhum acesso cadastrado neste tenant.</p>}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
