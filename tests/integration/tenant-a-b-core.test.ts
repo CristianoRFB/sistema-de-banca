@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { prepareIdempotency, saveIdempotency } from "../../cloudflare/worker/src/api";
 import { handleClientRoute } from "../../cloudflare/worker/src/routes/client";
 import { handleTenantBootstrapRoute } from "../../cloudflare/worker/src/routes/tenant-bootstrap";
 import { hashClientSessionToken, hashCustomerPhone } from "../../cloudflare/worker/src/security";
 import { resolveRequestTenant } from "../../cloudflare/worker/src/tenant";
 import { HttpError, type Bindings, type FirestoreDocument, type JsonObject, type RequestContext } from "../../cloudflare/worker/src/types";
-import type { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-rest";
+import type { FirestoreRest, FirestoreTransaction } from "../../cloudflare/worker/src/firebase/firestore-rest";
 
 const env: Bindings = {
   FIREBASE_PROJECT_ID: "tenant-integration-test",
@@ -142,4 +143,36 @@ describe("Tenant A × Tenant B integrated core isolation", () => {
       code: "tenant_not_found", status: 404,
     } satisfies Partial<HttpError>);
   });
+  it("keeps idempotency results independent across tenants, with replay only inside the owning banca", async () => {
+    const db = await fixture();
+    const a = await context(db, "banca-a", "client/profile");
+    const b = await context(db, "banca-b", "client/profile");
+    const sameHeaders = { "idempotency-key": "admin-shared-key-1234" };
+    const aCtx = { ...a, request: new Request(a.request.url, { headers: sameHeaders }) };
+    const bCtx = { ...b, request: new Request(b.request.url, { headers: sameHeaders }) };
+    const records = new Map<string, JsonObject>();
+    const transaction = {
+      get: async (path: string) => {
+        const data = records.get(path);
+        return data ? document(path, data) : null;
+      },
+      set: (path: string, data: JsonObject) => { records.set(path, data); },
+    } as unknown as FirestoreTransaction;
+
+    const body = { name: "Updated public profile" };
+    const first = await prepareIdempotency(aCtx, transaction, "bank-update:same-admin-uid", body);
+    saveIdempotency(transaction, first, { tenant: "tenant-a" });
+    const repeatA = await prepareIdempotency(aCtx, transaction, "bank-update:same-admin-uid", body);
+    expect(repeatA.path).toBe(first.path);
+    expect(repeatA.replay).toEqual({ tenant: "tenant-a" });
+
+    const firstB = await prepareIdempotency(bCtx, transaction, "bank-update:same-admin-uid", body);
+    expect(firstB.path).not.toBe(first.path);
+    expect(firstB.replay).toBeUndefined();
+    saveIdempotency(transaction, firstB, { tenant: "tenant-b" });
+    const repeatB = await prepareIdempotency(bCtx, transaction, "bank-update:same-admin-uid", body);
+    expect(repeatB.replay).toEqual({ tenant: "tenant-b" });
+    expect(records.size).toBe(2);
+  });
+
 });
