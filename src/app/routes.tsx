@@ -34,15 +34,20 @@ function TenantAdminGate() {
   const { user, loading } = useAdminAuth();
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
-  const [verified, setVerified] = useState<{ slug: string; allowed: boolean } | null>(null);
+  const [verified, setVerified] = useState<{ slug: string; allowed: boolean; supportExpiresAt: string | null } | null>(null);
 
   useEffect(() => {
     if (!user) return;
     let active = true;
     user.getIdToken()
-      .then((token) => apiRequest('/admin/session', { headers: { Authorization: `Bearer ${token}` } }))
-      .then(() => { if (active) setVerified({ slug, allowed: true }); })
-      .catch(() => { if (active) setVerified({ slug, allowed: false }); });
+      .then((token) => apiRequest<{ session: { platformOverride: boolean; supportExpiresAt: string | null } }>(
+        '/admin/session', { headers: { Authorization: `Bearer ${token}` } },
+      ))
+      .then((data) => { if (active) setVerified({
+        slug, allowed: true,
+        supportExpiresAt: data.session.platformOverride ? data.session.supportExpiresAt : null,
+      }); })
+      .catch(() => { if (active) setVerified({ slug, allowed: false, supportExpiresAt: null }); });
     return () => { active = false; };
   }, [user, slug]);
 
@@ -57,7 +62,7 @@ function TenantAdminGate() {
       <Link className="button button--secondary" to={tenantPath(slug)}>Voltar ao site</Link>
     </div>;
   }
-  return <AdminShell />;
+  return <AdminShell supportExpiresAt={verified.supportExpiresAt} />;
 }
 
 function PlatformGate() {
