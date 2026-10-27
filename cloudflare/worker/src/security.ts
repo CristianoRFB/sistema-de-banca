@@ -60,6 +60,10 @@ export async function hashCustomerPhone(env: Bindings, normalizedPhone: string):
   return hmac(env.CLIENT_SESSION_PEPPER, `customer-phone:v1:${normalizedPhone}`);
 }
 
+export async function hashTenantCustomerPhone(env: Bindings, tenantId: string, normalizedPhone: string): Promise<string> {
+  return hmac(env.CLIENT_SESSION_PEPPER, `customer-phone:v2:${tenantId}:${normalizedPhone}`);
+}
+
 export function createClientSessionToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return toBase64Url(bytes);
