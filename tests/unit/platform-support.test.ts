@@ -28,6 +28,23 @@ class MemorySupportDb {
     } : null;
   }
 
+  async query(collection: string, structuredQuery: JsonObject): Promise<FirestoreDocument[]> {
+    if (collection !== "bancas") throw new Error("Unexpected collection: " + collection);
+    const all = [...this.documents.entries()]
+      .filter(([path]) => /^bancas\/[^/]+$/.test(path))
+      .map(([path, data]) => ({
+        id: path.split("/")[1],
+        name: `projects/test/databases/(default)/documents/${path}`,
+        data,
+      } satisfies FirestoreDocument))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const startAt = structuredQuery.startAt as { values?: Array<{ referenceValue?: string }> } | undefined;
+    const cursor = startAt?.values?.[0]?.referenceValue;
+    const position = cursor ? all.findIndex((item) => item.name === cursor) : -1;
+    if (cursor && position < 0) throw new Error("Invalid pagination cursor");
+    return all.slice(position + 1, position + 1 + Number(structuredQuery.limit ?? 100));
+  }
+
   async transact<T>(fn: (transaction: {
     get: (path: string) => Promise<FirestoreDocument | null>;
     set: (path: string, data: JsonObject, options?: { mustNotExist?: boolean }) => void;
@@ -112,4 +129,29 @@ describe("Platform Owner temporary support", () => {
     expect(isValidSupportGrant({ ...base, ativo: false, expiraEm: new Date(now + 60_000).toISOString() }, "tenant-a", "platform-uid", "GET", now)).toBe(false);
     expect(isValidSupportGrant({ ...base, expiraEm: new Date(now + 60_000).toISOString() }, "tenant-a", "different-owner", "GET", now)).toBe(false);
   });
+  it("lists every tenant (including disabled tenants) after 500 without truncation", async () => {
+    const db = new MemorySupportDb();
+    for (let i = 0; i < 507; i += 1) {
+      const id = "tenant-" + String(i).padStart(4, "0");
+      db.documents.set("bancas/" + id, {
+        slug: id,
+        nomeExibicao: "Banca " + String(i).padStart(4, "0"),
+        ativo: i !== 233,
+      });
+    }
+    const ctx = context(db, "tenant-a", "GET");
+    const request = new Request("https://example.test/api/platform/tenants");
+    const response = await handlePlatformRoute({
+      ...ctx, request, url: new URL(request.url),
+    });
+    expect(response?.status).toBe(200);
+    const payload = await response!.json() as { data: { tenants: Array<{ id: string; active: boolean; name: string }> } };
+    expect(payload.data.tenants).toHaveLength(510);
+    expect(payload.data.tenants.some((tenant) => tenant.id === "tenant-0506")).toBe(true);
+    expect(payload.data.tenants.find((tenant) => tenant.id === "tenant-0233")?.active).toBe(false);
+    expect(payload.data.tenants.find((tenant) => tenant.id === "disabled")?.active).toBe(false);
+    expect(payload.data.tenants.map((tenant) => tenant.name))
+      .toEqual([...payload.data.tenants.map((tenant) => tenant.name)].sort((a, b) => a.localeCompare(b, "pt-BR")));
+  });
+
 });
