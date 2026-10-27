@@ -169,6 +169,74 @@ async function setMembership(
   return jsonResponse(ctx, { membership });
 }
 
+const SUPPORT_GRANT_MINUTES = new Set([15, 30, 60]);
+
+async function getSupportGrant(ctx: RequestContext, actor: PlatformIdentity, tenantId: string): Promise<Response> {
+  const tenant = await ctx.db.get(`bancas/${tenantId}`);
+  if (!tenant) throw new HttpError({ code: "tenant_not_found", message: "Tenant was not found.", status: 404 });
+  const document = await ctx.db.get(`bancas/${tenantId}/supportGrants/${actor.uid}`);
+  const data = document?.data;
+  const expiresAt = typeof data?.expiraEm === "string" ? data.expiraEm : null;
+  return jsonResponse(ctx, { grant: {
+    active: data?.ativo === true && data.bancaId === tenantId && data.uid === actor.uid && !!expiresAt && Date.parse(expiresAt) > Date.now(),
+    expiresAt,
+    reason: typeof data?.justificativa === "string" ? data.justificativa : null,
+  } });
+}
+
+async function grantSupport(ctx: RequestContext, actor: PlatformIdentity, tenantId: string): Promise<Response> {
+  const body = await readJsonBody(ctx.request, 4_000);
+  const durationMinutes = body.durationMinutes;
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!SUPPORT_GRANT_MINUTES.has(Number(durationMinutes)) || !Number.isInteger(durationMinutes)) {
+    throw new HttpError({ code: "invalid_support_duration", message: "Duration must be 15, 30 or 60 minutes.", status: 400 });
+  }
+  if (reason.length < 12 || reason.length > 300) {
+    throw new HttpError({ code: "invalid_support_reason", message: "Support reason must contain 12 to 300 characters.", status: 400 });
+  }
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + Number(durationMinutes) * 60_000).toISOString();
+  const result = await ctx.db.transact(async (transaction) => {
+    const tenant = await transaction.get(`bancas/${tenantId}`);
+    if (!tenant || tenant.data.ativo === false) {
+      throw new HttpError({ code: "tenant_not_found", message: "Active tenant was not found.", status: 404 });
+    }
+    const path = `bancas/${tenantId}/supportGrants/${actor.uid}`;
+    transaction.set(path, {
+      uid: actor.uid,
+      bancaId: tenantId,
+      ativo: true,
+      justificativa: reason,
+      criadoEm: now.toISOString(),
+      expiraEm: expiresAt,
+      atualizadoEm: now.toISOString(),
+      revogadoEm: null,
+    });
+    audit(transaction, actor, {
+      action: "PLATFORM_SUPPORT_GRANTED",
+      tenantId, entityId: actor.uid,
+      details: { reason, durationMinutes, expiresAt, mode: "READ_ONLY" },
+    });
+    return { active: true, expiresAt, reason };
+  });
+  return jsonResponse(ctx, { grant: result }, 201);
+}
+
+async function revokeSupport(ctx: RequestContext, actor: PlatformIdentity, tenantId: string): Promise<Response> {
+  const now = new Date().toISOString();
+  await ctx.db.transact(async (transaction) => {
+    const path = `bancas/${tenantId}/supportGrants/${actor.uid}`;
+    const current = await transaction.get(path);
+    if (!current) return;
+    transaction.set(path, { ...current.data, ativo: false, revogadoEm: now, atualizadoEm: now });
+    audit(transaction, actor, {
+      action: "PLATFORM_SUPPORT_REVOKED", tenantId, entityId: actor.uid,
+      details: { previousExpiry: current.data.expiraEm ?? null },
+    });
+  });
+  return jsonResponse(ctx, { grant: { active: false } });
+}
+
 export async function handlePlatformRoute(ctx: RequestContext): Promise<Response | null> {
   if (!ctx.url.pathname.startsWith("/api/platform/")) return null;
   const actor = await requirePlatformOwner(ctx);
@@ -194,6 +262,13 @@ export async function handlePlatformRoute(ctx: RequestContext): Promise<Response
   const membershipMatch = pathname.match(/^\/api\/platform\/tenants\/([A-Za-z0-9_-]+)\/memberships\/([A-Za-z0-9:_-]+)$/);
   if (ctx.request.method === "PUT" && membershipMatch) {
     return setMembership(ctx, actor, membershipMatch[1], membershipMatch[2]);
+  }
+
+  const supportMatch = pathname.match(/^\/api\/platform\/tenants\/([A-Za-z0-9_-]+)\/support$/);
+  if (supportMatch) {
+    if (ctx.request.method === "GET") return getSupportGrant(ctx, actor, supportMatch[1]);
+    if (ctx.request.method === "POST") return grantSupport(ctx, actor, supportMatch[1]);
+    if (ctx.request.method === "DELETE") return revokeSupport(ctx, actor, supportMatch[1]);
   }
 
   throw new HttpError({ code: "not_found", message: "Platform API route was not found.", status: 404 });
