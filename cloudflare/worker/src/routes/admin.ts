@@ -773,6 +773,7 @@ async function getBankProfile(ctx: RequestContext): Promise<Response> {
       address: bank.data.endereco ?? null,
       collectionSafetyMarginDays: bank.data.margemRecolhimentoDias ?? 2,
       withdrawalToleranceDays: bank.data.toleranciaRetiradaDias ?? 0,
+      branding: typeof bank.data.branding === "object" && bank.data.branding !== null ? bank.data.branding : {},
     },
     hours: Array.from({ length: 7 }, (_, day) => {
       const hour = schedules.find((entry) => weekdayIndex(entry.data.diaSemana, entry.id) === day);
@@ -1229,6 +1230,7 @@ async function updateBankProfile(ctx: RequestContext, user: AdminIdentity): Prom
     address: profile.address,
     collectionSafetyMarginDays: profile.collectionSafetyMarginDays ?? profile.collectionMarginDays,
     withdrawalToleranceDays: profile.withdrawalToleranceDays ?? profile.pickupToleranceDays,
+    branding: body.branding,
     hours: body.hours,
   };
   const hours = body.hours === undefined ? null : validateHours(body.hours);
@@ -1240,6 +1242,31 @@ async function updateBankProfile(ctx: RequestContext, user: AdminIdentity): Prom
     if (!bank) throw new HttpError({ code: "bank_not_found", message: "Bank profile was not found.", status: 404 });
     const storedHours = await transaction.query(`bancas/${ctx.env.BANCA_ID}/horarios`, query("horarios", [], 7));
     const updated: JsonObject = { ...bank.data, atualizadoEm: now };
+    if (body.branding !== undefined) {
+      if (!isPlainObject(body.branding)) throw new HttpError({ code: "invalid_branding", message: "branding must be an object.", status: 400 });
+      const currentBranding = isPlainObject(bank.data.branding) ? bank.data.branding : {};
+      const nextBranding: JsonObject = { ...currentBranding };
+      for (const key of ["primaryColor", "accentColor", "backgroundColor", "textColor"] as const) {
+        const value = body.branding[key];
+        if (value === null || value === "") delete nextBranding[key];
+        else if (value !== undefined) {
+          const color = String(value).trim();
+          if (!/^#[0-9A-Fa-f]{6}$/.test(color)) throw new HttpError({ code: "invalid_branding", message: key + " must be a 6-digit hex color.", status: 400 });
+          nextBranding[key] = color;
+        }
+      }
+      if (body.branding.logoUrl === null || body.branding.logoUrl === "") delete nextBranding.logoUrl;
+      else if (body.branding.logoUrl !== undefined) {
+        const logoUrl = requireString(body.branding.logoUrl, "logoUrl", 500);
+        let parsed: URL;
+        try { parsed = new URL(logoUrl); } catch { throw new HttpError({ code: "invalid_branding", message: "logoUrl must be a valid HTTPS URL.", status: 400 }); }
+        if (parsed.protocol !== "https:") throw new HttpError({ code: "invalid_branding", message: "logoUrl must use HTTPS.", status: 400 });
+        nextBranding.logoUrl = logoUrl;
+      }
+      if (body.branding.tagline === null || body.branding.tagline === "") delete nextBranding.tagline;
+      else if (body.branding.tagline !== undefined) nextBranding.tagline = requireString(body.branding.tagline, "tagline", 160);
+      updated.branding = nextBranding;
+    }
     if (profile.name !== undefined) updated.nomeExibicao = requireString(profile.name, "name", 100);
     if (profile.phone !== undefined) updated.telefone = requireString(profile.phone, "phone", 32);
     if (profile.address !== undefined) updated.endereco = requireString(profile.address, "address", 500);
@@ -1288,6 +1315,7 @@ async function updateBankProfile(ctx: RequestContext, user: AdminIdentity): Prom
         address: bank.data.endereco ?? null,
         collectionSafetyMarginDays: bank.data.margemRecolhimentoDias ?? 2,
         withdrawalToleranceDays: bank.data.toleranciaRetiradaDias ?? 0,
+        branding: isPlainObject(bank.data.branding) ? bank.data.branding : {},
         hours: Array.from({ length: 7 }, (_, day) => {
           const hour = storedHours.find((entry) => weekdayIndex(entry.data.diaSemana, entry.id) === day);
           const data = hour?.data ?? defaultOpeningHours(day);
@@ -1300,6 +1328,7 @@ async function updateBankProfile(ctx: RequestContext, user: AdminIdentity): Prom
         address: updated.endereco ?? null,
         collectionSafetyMarginDays: updated.margemRecolhimentoDias ?? 2,
         withdrawalToleranceDays: updated.toleranciaRetiradaDias ?? 0,
+        branding: isPlainObject(updated.branding) ? updated.branding : {},
         hours: responseHours,
       },
       tipo: "CONFIGURACAO_BANCA_ATUALIZADA",
@@ -1307,7 +1336,7 @@ async function updateBankProfile(ctx: RequestContext, user: AdminIdentity): Prom
       criadoEm: now,
     }, { mustNotExist: true });
     const response = {
-      profile: { name: updated.nomeExibicao, phone: updated.telefone, address: updated.endereco, collectionSafetyMarginDays: updated.margemRecolhimentoDias, withdrawalToleranceDays: updated.toleranciaRetiradaDias },
+      profile: { name: updated.nomeExibicao, phone: updated.telefone, address: updated.endereco, collectionSafetyMarginDays: updated.margemRecolhimentoDias, withdrawalToleranceDays: updated.toleranciaRetiradaDias, branding: isPlainObject(updated.branding) ? updated.branding : {} },
       hours: responseHours,
     };
     saveIdempotency(transaction, idem, response);
