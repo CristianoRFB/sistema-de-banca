@@ -48,7 +48,19 @@ export function PlatformAdminPage() {
     }
   }, [user]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setLoading(false);
+      return () => { active = false; };
+    }
+    user.getIdToken()
+      .then((token) => apiRequest<{ tenants: PlatformTenant[] }>('/platform/tenants', { headers: authHeaders(token) }))
+      .then((result) => { if (active) setTenants(result.tenants); })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os tenants.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [user]);
 
   async function createTenant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
