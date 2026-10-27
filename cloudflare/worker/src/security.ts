@@ -57,7 +57,13 @@ export async function hashClientSessionToken(env: Bindings, token: string): Prom
 }
 
 export async function hashCustomerPhone(env: Bindings, normalizedPhone: string): Promise<string> {
-  return hmac(env.CLIENT_SESSION_PEPPER, `customer-phone:v1:${normalizedPhone}`);
+  const tenantId = env.BANCA_ID?.trim();
+  return hmac(
+    env.CLIENT_SESSION_PEPPER,
+    tenantId
+      ? `customer-phone:v2:${tenantId}:${normalizedPhone}`
+      : `customer-phone:v1:${normalizedPhone}`,
+  );
 }
 
 export async function hashTenantCustomerPhone(env: Bindings, tenantId: string, normalizedPhone: string): Promise<string> {
