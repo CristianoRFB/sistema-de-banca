@@ -1,6 +1,6 @@
 import { eq, firestoreString, jsonResponse, query, readJsonBody } from "../api";
 import { requirePlatformOwner } from "../security";
-import { validateTenantSlugForCreation } from "../tenant";
+import { listTenantDocuments, validateTenantSlugForCreation } from "../tenant";
 import { HttpError, type JsonObject, type PlatformIdentity, type RequestContext, type TenantRole } from "../types";
 
 const TENANT_ROLES = new Set<TenantRole>(["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"]);
@@ -33,9 +33,11 @@ function audit(
 }
 
 async function listTenants(ctx: RequestContext): Promise<Response> {
-  const rows = await ctx.db.query("bancas", query("bancas", [], 500, [
-    { field: { fieldPath: "nomeExibicao" }, direction: "ASCENDING" },
-  ]));
+  // Pagination happens by document name in the shared tenant enumerator.
+  // Sort only after reading all pages so an inactive or later tenant is not lost.
+  const rows = await listTenantDocuments(ctx.db);
+  rows.sort((a, b) => String(a.data.nomeExibicao ?? a.data.nome ?? a.id)
+    .localeCompare(String(b.data.nomeExibicao ?? b.data.nome ?? b.id), "pt-BR"));
   return jsonResponse(ctx, {
     tenants: rows.map((row) => ({
       id: row.id,
