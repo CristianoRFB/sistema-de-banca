@@ -50,10 +50,7 @@ export function PlatformAdminPage() {
 
   useEffect(() => {
     let active = true;
-    if (!user) {
-      setLoading(false);
-      return () => { active = false; };
-    }
+    if (!user) return () => { active = false; };
     user.getIdToken()
       .then((token) => apiRequest<{ tenants: PlatformTenant[] }>('/platform/tenants', { headers: authHeaders(token) }))
       .then((result) => { if (active) setTenants(result.tenants); })
