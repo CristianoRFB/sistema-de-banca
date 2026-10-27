@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { useAdminAuth } from '../../app/providers';
 import { adminRepository, type ReparteAdmin } from '../../features/admin/admin.repository';
 import { AdminEmpty, AdminHeading, AdminLoadError, AdminLoading } from './AdminCommon';
+import { currentTenantSlug, tenantPanelPath } from '../../app/tenant';
 
 const filters = [
   { value: 'ABERTOS', label: 'Em andamento' },
@@ -55,7 +56,7 @@ export function RecolhimentosPage() {
         const canReconcile = ['ATIVO', 'AGUARDANDO_RECOLHIMENTO'].includes(item.status);
         const card = <><div className="admin-list-card__top"><Badge tone={item.status === 'AGUARDANDO_RECOLHIMENTO' ? 'orange' : item.status === 'ENCERRADO' || item.status === 'ARQUIVADO' ? 'muted' : 'lime'}>{item.status.replaceAll('_', ' ')}</Badge><span>{item.itemCount ?? '—'} itens</span></div><h2>{item.title}</h2><p><CalendarDays size={14} /> {item.plannedCollectionAt ? new Date(item.plannedCollectionAt).toLocaleDateString('pt-BR') : 'Data não cadastrada'}</p><div className="admin-list-card__footer"><span>{canReconcile ? 'Registrar conferência física' : 'Lote preservado no histórico'}</span>{canReconcile && <ArrowRight size={17} />}</div></>;
         return canReconcile
-          ? <Link className="admin-list-card" to={`/admin/recolhimentos/${item.id}`} key={item.id}>{card}</Link>
+          ? <Link className="admin-list-card" to={tenantPanelPath(currentTenantSlug(), `recolhimentos/${item.id}`)} key={item.id}>{card}</Link>
           : <article className="admin-list-card" key={item.id}>{card}</article>;
       })}</div>
       {cursor && <div className="history-load-more"><Button variant="secondary" disabled={loadingMore} onClick={() => void load(cursor)}>{loadingMore ? 'Carregando…' : moreFailed ? 'Tentar carregar novamente' : 'Carregar mais lotes'}</Button></div>}
