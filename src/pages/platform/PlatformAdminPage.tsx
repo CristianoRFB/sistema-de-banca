@@ -14,6 +14,12 @@ interface PlatformMembership {
   active: boolean;
 }
 
+interface PlatformSupportGrant {
+  active: boolean;
+  expiresAt: string | null;
+  reason: string | null;
+}
+
 interface PlatformTenant {
   id: string;
   slug: string;
@@ -40,6 +46,9 @@ export function PlatformAdminPage() {
   const [memberships, setMemberships] = useState<PlatformMembership[]>([]);
   const [membershipUid, setMembershipUid] = useState('');
   const [membershipRole, setMembershipRole] = useState<'TENANT_OWNER' | 'STAFF' | 'ADMIN' | 'OPERADOR'>('TENANT_OWNER');
+  const [supportGrant, setSupportGrant] = useState<PlatformSupportGrant | null>(null);
+  const [supportReason, setSupportReason] = useState('');
+  const [supportMinutes, setSupportMinutes] = useState(15);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -122,6 +131,11 @@ export function PlatformAdminPage() {
       );
       setSelectedTenantId(tenantId);
       setMemberships(result.memberships);
+      const supportResult = await apiRequest<{ grant: PlatformSupportGrant }>(
+        `/platform/tenants/${encodeURIComponent(tenantId)}/support`,
+        { headers: authHeaders(token) },
+      );
+      setSupportGrant(supportResult.grant);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os acessos.');
     } finally {
@@ -171,6 +185,38 @@ export function PlatformAdminPage() {
       await loadMemberships(selectedTenantId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível alterar o acesso.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function changeSupportStatus(action: 'grant' | 'revoke') {
+    if (!user || !selectedTenantId) return;
+    const reason = supportReason.trim();
+    if (action === 'grant' && (reason.length < 12 || reason.length > 300)) {
+      setError('Informe uma justificativa de 12 a 300 caracteres para o suporte.');
+      return;
+    }
+    const message = action === 'grant'
+      ? `Conceder acesso de suporte somente leitura a este tenant por ${supportMinutes} minutos?`
+      : 'Revogar imediatamente seu acesso temporário de suporte a este tenant?';
+    if (!window.confirm(message)) return;
+    setWorking(true);
+    setError('');
+    try {
+      const token = await user.getIdToken();
+      const result = await apiRequest<{ grant: PlatformSupportGrant }>(
+        `/platform/tenants/${encodeURIComponent(selectedTenantId)}/support`,
+        {
+          method: action === 'grant' ? 'POST' : 'DELETE',
+          headers: { ...authHeaders(token), ...(action === 'grant' ? { 'Content-Type': 'application/json' } : {}) },
+          ...(action === 'grant' ? { body: JSON.stringify({ reason, durationMinutes: supportMinutes }) } : {}),
+        },
+      );
+      setSupportGrant(result.grant);
+      if (action === 'grant') setSupportReason('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o suporte temporário.');
     } finally {
       setWorking(false);
     }
@@ -248,6 +294,40 @@ export function PlatformAdminPage() {
           <div className="section-heading">
             <div><span className="eyebrow">MEMBERSHIPS</span><h2>Acessos do tenant</h2></div>
             <span>{memberships.length}</span>
+          </div>
+          <div className="form-stack">
+            <div>
+              <span className="eyebrow">SUPORTE TEMPORÁRIO</span>
+              <p className="muted-copy">Acesso de leitura apenas, por prazo limitado e registrado em auditoria. Não altera memberships permanentes.</p>
+              {supportGrant?.active && supportGrant.expiresAt && (
+                <p role="status">Suporte ativo até {new Date(supportGrant.expiresAt).toLocaleString('pt-BR')}.</p>
+              )}
+            </div>
+            <label className="field-label">Justificativa
+              <Input value={supportReason} onChange={(event) => setSupportReason(event.target.value)}
+                maxLength={300} placeholder="Explique a necessidade de acesso aos dados da banca" />
+            </label>
+            <label className="field-label">Prazo (minutos)
+              <select value={supportMinutes} onChange={(event) => setSupportMinutes(Number(event.target.value))}>
+                <option value={15}>15 minutos</option>
+                <option value={30}>30 minutos</option>
+                <option value={60}>60 minutos</option>
+              </select>
+            </label>
+            <div className="button-row">
+              <Button type="button" variant="secondary" disabled={working || supportReason.trim().length < 12}
+                onClick={() => void changeSupportStatus('grant')}>Conceder suporte somente leitura</Button>
+              {supportGrant?.active && (
+                <Button type="button" variant="secondary" disabled={working}
+                  onClick={() => void changeSupportStatus('revoke')}>Revogar suporte</Button>
+              )}
+              {supportGrant?.active && (
+                <Link className="button button--secondary"
+                  to={tenantPanelPath(tenants.find((tenant) => tenant.id === selectedTenantId)?.slug ?? '')}>
+                  Abrir painel para suporte
+                </Link>
+              )}
+            </div>
           </div>
           <form className="form-stack" onSubmit={(event) => void saveMembership(event)}>
             <label className="field-label">Firebase Auth UID<Input value={membershipUid} onChange={(event) => setMembershipUid(event.target.value)} required /></label>
