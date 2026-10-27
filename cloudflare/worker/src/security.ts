@@ -123,7 +123,8 @@ export async function rateLimit(ctx: RequestContext, scope: "public-search" | "c
     throw new HttpError({ code: "rate_limit_unavailable", message: "Client routes are temporarily unavailable.", status: 503 });
   }
   const address = ctx.request.headers.get("cf-connecting-ip") ?? "unknown";
-  const hashedAddress = await hmac(ctx.env.CLIENT_SESSION_PEPPER, `rate-limit:v1:${scope}:${address}`);
+  // Tenant scope prevents traffic to one banca from consuming another banca's allowance.
+  const hashedAddress = await hmac(ctx.env.CLIENT_SESSION_PEPPER, `rate-limit:v2:${ctx.tenant.id}:${scope}:${address}`);
   const result = await ctx.env.CLIENT_RATE_LIMITER.limit({ key: hashedAddress });
   if (!result.success) throw new HttpError({ code: "rate_limited", message: "Too many requests. Try again shortly.", status: 429 });
 }
