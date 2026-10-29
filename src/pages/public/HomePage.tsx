@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, MapPin, Search, Sparkles } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { BANCA } from '../../app/config';
+import { useTenantPublic } from '../../app/tenant-public-context';
 import { normalizeTenantSlug, tenantPath } from '../../app/tenant';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -15,6 +15,7 @@ import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
 
 export function HomePage() {
+  const tenant = useTenantPublic();
   const navigate = useNavigate();
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
@@ -65,7 +66,7 @@ export function HomePage() {
 
   const catalogLoading = loadedCatalogAttempt !== catalogAttempt;
   const visibleSource = catalogLoading ? 'loading' : source;
-  const tenantName = profile?.nomeExibicao || BANCA.name;
+  const tenantName = profile?.nomeExibicao || tenant?.name || 'Banca';
   const tenantInitials = tenantName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toLocaleUpperCase('pt-BR') ?? '').join('');
 
   useEffect(() => {
@@ -99,7 +100,7 @@ export function HomePage() {
     <div className="home-page">
       <section className="hero-band">
         <div className="hero-copy">
-          <div className="hero-kicker"><span className="status-dot" /> {profile?.endereco || BANCA.city}</div>
+          <div className="hero-kicker"><span className="status-dot" /> {profile?.endereco || tenant?.address || 'Visite nossa banca'}</div>
           <p className="hero-index">BANCA DE LEITURA <span>001 / SFDS</span></p>
           <h1>Histórias<br />que <em>chegam</em><br />até você.</h1>
           <p className="hero-description">Seu próximo volume favorito pode estar a poucos passos. Explore as novidades da banca.</p>
@@ -155,7 +156,7 @@ export function HomePage() {
           <div className="empty-catalog">
             <span className="empty-catalog__number">—</span>
             <div><h3>Estamos preparando o catálogo.</h3><p>Enquanto isso, fale com a banca pelo WhatsApp e pergunte pelas novidades.</p></div>
-            <a className="button button--secondary" href={'https://wa.me/' + ((profile?.telefone || BANCA.phone).replace(/\D/g, ''))} target="_blank" rel="noreferrer">Chamar no WhatsApp ↗</a>
+            {(profile?.telefone || tenant?.phone) ? <a className="button button--secondary" href={'https://wa.me/' + (profile?.telefone || tenant?.phone || '').replace(/\D/g, '')} target="_blank" rel="noreferrer">Chamar no WhatsApp ↗</a> : <Link className="button button--secondary" to={tenantPath(slug, 'localizacao')}>Contato e localização</Link>}
           </div>
         )}
       </section>
@@ -170,7 +171,7 @@ export function HomePage() {
       <section className="visit-section">
         <div className="visit-section__label"><span className="eyebrow">04 · APAREÇA</span><Badge tone={openStatus === 'open' ? 'lime' : 'muted'}>{openStatus === 'open' ? 'Aberta agora' : openStatus === 'closed' ? 'Fechada agora' : hoursState === 'loading' ? 'Consultando horários' : 'Horário indisponível'}</Badge></div>
         <div className="visit-section__body"><h2>Seu ponto<br />de parada.</h2><p>Um lugar para encontrar o próximo volume, trocar indicações e descobrir o que acabou de chegar.</p><Link className="button button--dark" to={tenantPath(slug, 'localizacao')}>Endereço e horários <ArrowRight size={17} /></Link></div>
-        <div className="visit-section__address"><MapPin size={19} /><span>{profile?.endereco || BANCA.address}</span></div>
+        <div className="visit-section__address"><MapPin size={19} /><span>{profile?.endereco || tenant?.address || 'Endereço indisponível'}</span></div>
       </section>
     </div>
   );
