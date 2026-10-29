@@ -26,3 +26,23 @@ jobs:
       - run: npm test
       - run: npm run worker:typecheck
       - run: npm run docs:check
+
+
+  firestore-emulator:
+    name: Firestore Emulator — Tenant A x Tenant B
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Verify Rules and Worker against local Firestore Emulator
+        # Demo project, localhost only, no GCP/Firebase credentials or production writes.
+        run: npx --yes firebase-tools@14.19.0 emulators:exec --only firestore --project demo-banca 'npm run test:emulator'
