@@ -6,7 +6,7 @@
 - compatibilidade legacy opcional via BANCA_ID;
 - cron jobs por tenants ativos;
 - rotas frontend por slug;
-- cache público tenant-scoped;
+- cache público tenant-scoped, incluindo bootstrap de identidade em modo offline (sem cache de APIs privadas);
 - roles locais ADMIN/OPERADOR/TENANT_OWNER/STAFF;
 - Platform Owner server-side em `platformOwners/{uid}`;
 - API e console mínimo de Platform Owner;
