@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createMigrationPlan, runMigration, tenantPhoneHash, validateMigrationSettings,
+  createMigrationPlan, normalizeMigrationPhone, runMigration, tenantPhoneHash, validateMigrationSettings,
 } from "../../scripts/multitenant-migration-core.mjs";
 
 const config = {
@@ -148,6 +148,17 @@ describe("additive migration with no real Firebase connection", () => {
       .rejects.toThrow("already has another slug");
     expect(db.changes.create).toHaveLength(0);
     expect(db.changes.patch).toHaveLength(0);
+  });
+
+  it("normalizes local, international and 0055 phone formats exactly as the Worker", async () => {
+    expect(normalizeMigrationPhone("17 99999-1234")).toBe("5517999991234");
+    expect(normalizeMigrationPhone("+55 (17) 99999-1234")).toBe("5517999991234");
+    expect(normalizeMigrationPhone("0055 (17) 99999-1234")).toBe("5517999991234");
+    const db = gateway({ clients: [client("one", "17 99999-1234")] });
+    const result = await runMigration({ ...config, gateway: db });
+    expect(result.phoneIndexes.WOULD_CREATE).toBe(1);
+    expect(result.actions[0].documentId).toBe(tenantPhoneHash(config.pepper, config.bankId, "5517999991234"));
+    expect(db.changes.create).toHaveLength(0);
   });
 
   it("computes deterministic, tenant-separated hashes without exposing customer numbers", () => {
