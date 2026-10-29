@@ -161,6 +161,25 @@ describe("additive migration with no real Firebase connection", () => {
     expect(db.changes.create).toHaveLength(0);
   });
 
+  it("falls back to the raw phone if the legacy normalized phone is blank", async () => {
+    const db = gateway({ clients: [{ id: "client-one", fields: {
+      telefoneNormalizado: "", telefone: "(17) 99999-1234",
+    } }] });
+    const plan = await runMigration({ ...config, gateway: db });
+    expect(plan.phoneIndexes.WOULD_CREATE).toBe(1);
+    expect(plan.actions[0].documentId).toBe(tenantPhoneHash(config.pepper, config.bankId, "5517999991234"));
+  });
+
+  it("refuses inconsistent legacy phone fields before writing any index", async () => {
+    const db = gateway({ clients: [{ id: "client-one", fields: {
+      telefoneNormalizado: "5517999991234", telefone: "5517999994321",
+    } }] });
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("conflicting raw and normalized phone");
+    expect(db.changes.create).toHaveLength(0);
+    expect(db.changes.patch).toHaveLength(0);
+  });
+
   it("computes deterministic, tenant-separated hashes without exposing customer numbers", () => {
     const phone = "5517999991234";
     const first = tenantPhoneHash(config.pepper, config.bankId, phone);
