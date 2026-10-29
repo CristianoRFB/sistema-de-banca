@@ -181,6 +181,68 @@ describe("additive migration with no real Firebase connection", () => {
     expect(db.changes.patch).toHaveLength(0);
   });
 
+  it("rejects a missing source updateTime before creating a single phone index", async () => {
+    const db = gateway();
+    db.tenant.updateTime = null;
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("missing a valid updateTime");
+    expect(db.changes.create).toHaveLength(0);
+    expect(db.changes.patch).toHaveLength(0);
+  });
+
+  it("rejects duplicate source client document IDs before any write", async () => {
+    const db = gateway({ clients: [
+      client("client-one", "5517999991234"),
+      client("client-one", "5517999994321"),
+    ] });
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("duplicated document IDs");
+    expect(db.changes.create).toHaveLength(0);
+    expect(db.changes.patch).toHaveLength(0);
+  });
+
+  it("does not activate the canonical slug when a customer is added during index creation", async () => {
+    const db = gateway();
+    const original = db.listClients;
+    let calls = 0;
+    db.listClients = async (id) => {
+      calls += 1;
+      const rows = await original(id);
+      if (calls === 2) rows.push(client("late-client", "5517999992222"));
+      return rows;
+    };
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("Clients changed during migration");
+    expect(db.changes.create).toHaveLength(2);
+    expect(db.changes.patch).toHaveLength(0);
+    expect(db.tenant.fields.slug).toBeUndefined();
+  });
+
+  it("does not finalize if a customer changes phone during index creation", async () => {
+    const db = gateway();
+    const original = db.listClients;
+    let calls = 0;
+    db.listClients = async (id) => {
+      calls += 1;
+      const rows = await original(id);
+      if (calls === 2) rows[0].fields.telefoneNormalizado = "5517999992222";
+      return rows;
+    };
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("Clients changed during migration");
+    expect(db.changes.patch).toHaveLength(0);
+  });
+
+  it("does not finalize if another bank claims the slug between preflight and patch", async () => {
+    const db = gateway();
+    let calls = 0;
+    db.findBySlug = async () => (++calls === 1 ? [] : [{ id: "tenant-b" }]);
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("slug was claimed by another tenant");
+    expect(db.changes.patch).toHaveLength(0);
+    expect(db.tenant.fields.slug).toBeUndefined();
+  });
+
   it("generates exactly the same index IDs and canonical phones as the production Worker", async () => {
     const phones = ["17 99999-1234", "+55 (17) 99999-1234", "0055 17 99999-1234"];
     for (const raw of phones) {
