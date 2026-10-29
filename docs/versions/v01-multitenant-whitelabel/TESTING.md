@@ -42,7 +42,7 @@ Não declarar `READY_FOR_GLOBAL_STANDARD_IMPLEMENTATION` sem completar o readine
 
 ## Browser smoke e screenshots da interface com fixtures
 
-O job `browser-smoke` (GitHub Actions) executa React/Vite em Chromium e intercepta **somente** os endpoints `/api/t/{slug}/...` para prover dados sintéticos de duas bancas. O teste verifica troca de tenant sem recarregar, branding, contatos, home, catálogo, localização, produto, viewports desktop/mobile e resposta segura a tenant inexistente.
+O job `browser-smoke` (GitHub Actions) executa React/Vite em Chromium e intercepta **somente** os endpoints `/api/t/{slug}/...` para prover dados sintéticos de duas bancas. O teste verifica troca de tenant sem recarregar, branding, contatos, home, catálogo, localização, produto, telas de login e perfil sem sessão, viewports desktop/mobile e resposta segura a tenant inexistente.
 
 O Playwright está fixado em `@playwright/test@1.64.1` (Ubuntu 26.04). Para testar localmente:
 
