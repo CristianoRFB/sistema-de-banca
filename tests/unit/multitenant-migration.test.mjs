@@ -233,6 +233,39 @@ describe("additive migration with no real Firebase connection", () => {
     expect(db.changes.patch).toHaveLength(0);
   });
 
+  it("verifies newly created indexes from Firestore before activating the slug", async () => {
+    const db = gateway();
+    const original = db.getPhoneIndex;
+    let verificationReads = 0;
+    db.getPhoneIndex = async (hash) => {
+      const current = await original(hash);
+      if (current) {
+        verificationReads += 1;
+        // Inject a post-write deletion of the second index.
+        if (verificationReads === 2) return null;
+      }
+      return current;
+    };
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("Phone index verification failed");
+    expect(db.changes.create).toHaveLength(2);
+    expect(db.changes.patch).toHaveLength(0);
+    expect(db.tenant.fields.slug).toBeUndefined();
+  });
+
+  it("rejects an index reassigned to a different tenant during APPLY", async () => {
+    const db = gateway();
+    const original = db.getPhoneIndex;
+    db.getPhoneIndex = async (hash) => {
+      const current = await original(hash);
+      if (!current) return null;
+      return { fields: { bancaId: "tenant-b", clienteId: current.fields.clienteId } };
+    };
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("Phone index verification failed");
+    expect(db.changes.patch).toHaveLength(0);
+  });
+
   it("does not finalize if another bank claims the slug between preflight and patch", async () => {
     const db = gateway();
     let calls = 0;
