@@ -1,3 +1,5 @@
+/* global window, PopStateEvent */
+import { URL } from 'node:url';
 import { mkdir } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 
