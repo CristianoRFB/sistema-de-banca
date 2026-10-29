@@ -7,10 +7,12 @@ import { ApiError } from '../../infra/browser/api-client';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
 import { ReservarProdutoSheet } from '../../features/reservas/components/ReservarProdutoSheet';
 import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
-import { BANCA } from '../../app/config';
+import { useTenantPublic } from '../../app/tenant-public-context';
 import { currentTenantSlug, tenantPath } from '../../app/tenant';
 
 export function ProdutoPage() {
+  const tenant = useTenantPublic();
+  const phoneDigits = (tenant?.phone ?? '').replace(/\D/g, '');
   const { itemReparteId = '' } = useParams();
   const [product, setProduct] = useState<ProdutoCatalogo | null>(null);
   const [loadState, setLoadState] = useState<'ready' | 'not-found' | 'failure'>('ready');
@@ -53,7 +55,7 @@ export function ProdutoPage() {
       {demo && <div className="demo-ribbon"><span>Amostra de desenvolvimento</span> Sem estoque ou preço publicado. Este título não pode ser reservado.</div>}
       <section className="product-detail">
         <div className="product-detail__poster" aria-label="Capa indisponível; exibição tipográfica">
-          <div className="poster__top"><span>ANA MARIA / CATÁLOGO</span><span>01—06</span></div>
+          <div className="poster__top"><span>{tenant?.name.toLocaleUpperCase('pt-BR') ?? 'BANCA'} / CATÁLOGO</span><span>01—06</span></div>
           <span className="poster__glyph">読</span>
           <div className="poster__title"><span>{product.tipo}</span><strong>{product.titulo}</strong>{product.volume && <b>VOL. {product.volume}</b>}</div>
           <span className="poster__vertical">HISTÓRIAS QUE CHEGAM ATÉ VOCÊ</span>
@@ -71,10 +73,10 @@ export function ProdutoPage() {
           </div>
           <div className="product-actions">
             <Button disabled={!product.permiteReserva || demo} onClick={() => setReserveOpen(true)}>{available && product.permiteReserva ? 'Reservar este volume' : 'Reserva indisponível'} <ArrowUpRight size={17} /></Button>
-            <a className="button button--secondary" href={`https://wa.me/${BANCA.phoneDigits}?text=${encodeURIComponent(`Olá! Tenho interesse em ${product.titulo}${product.volume ? `, volume ${product.volume}` : ''}.`)}`} target="_blank" rel="noreferrer">Perguntar à banca <Share2 size={16} /></a>
+            {phoneDigits && <a className="button button--secondary" href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(`Olá! Tenho interesse em ${product.titulo}${product.volume ? `, volume ${product.volume}` : ''}.`)}`} target="_blank" rel="noreferrer">Perguntar à banca <Share2 size={16} /></a>}
           </div>
           {product.dataFimReservas && <p className="reservation-cutoff"><CalendarDays size={15} /> Reservas até {new Date(`${product.dataFimReservas.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR')}.</p>}
-          <div className="product-location-note"><MapPin size={17} /><span>Retirada presencial em <b>{BANCA.city}</b>. A confirmação é feita pela equipe da banca.</span></div>
+          <div className="product-location-note"><MapPin size={17} /><span>Retirada presencial na banca <b>{tenant?.name ?? 'selecionada'}</b>. A confirmação é feita pela equipe da banca.</span></div>
         </div>
       </section>
       <div className="product-footnote"><span>LEIA. COMPARTILHE. VOLTE PARA MAIS.</span><Link to={tenantPath(currentTenantSlug(), 'localizacao')}>Visite a banca <ArrowUpRight size={15} /></Link></div>
