@@ -50,7 +50,7 @@ export default defineConfig({
             urlPattern: ({ url, request }) =>
               request.method === 'GET' &&
               url.origin === self.location.origin &&
-              /^\/api\/t\/[a-z0-9-]+\/public\/(?:banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(url.pathname),
+              /^\/api\/t\/[a-z0-9-]+\/public\/(?:tenant|banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(url.pathname),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'tenant-public-read-api-v2',
