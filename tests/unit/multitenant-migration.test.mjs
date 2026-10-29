@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createMigrationPlan, normalizeMigrationPhone, runMigration, tenantPhoneHash, validateMigrationSettings,
+  normalizeMigrationPhone, runMigration, tenantPhoneHash, validateMigrationSettings,
 } from "../../scripts/multitenant-migration-core.mjs";
 
 const config = {
@@ -29,11 +29,11 @@ function gateway(options = {}) {
     tenant, clients, indices, changes,
     async getTenant(id) {
       changes.calls.push("getTenant");
-      return id === config.bankId ? structuredClone(tenant) : null;
+      return id === config.bankId ? JSON.parse(JSON.stringify(tenant)) : null;
     },
     async listClients(id) {
       changes.calls.push("listClients");
-      return id === config.bankId ? structuredClone(clients) : [];
+      return id === config.bankId ? JSON.parse(JSON.stringify(clients)) : [];
     },
     async findBySlug(slug) {
       changes.calls.push("findBySlug");
