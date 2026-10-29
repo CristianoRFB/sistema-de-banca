@@ -39,7 +39,7 @@ O comando acima é um exemplo para shell Unix; adapte as variáveis ao terminal 
 - cria **somente índices ausentes** com create exclusivo (não sobrescreve índice alheio);
 - mantém documentos dos clientes, catálogos, listas, histórico e dados originais;
 - não altera o status `ativo` já existente da banca;
-- após criar os índices, **relê a lista de clientes** para verificar IDs e telefones canônicos inalterados e **consulta novamente a unicidade do slug**; havendo alteração concorrente, a etapa de finalização é recusada e deve-se refazer o dry-run;
+- após criar os índices, **relê todos os índices esperados no Firestore**, rejeitando índices ausentes, alterados ou pertencentes a outro tenant; em seguida, **relê a lista de clientes** para verificar IDs e telefones canônicos inalterados e **consulta novamente a unicidade do slug**; havendo alteração concorrente, a etapa de finalização é recusada e deve-se refazer o dry-run;
 - depois dessa revalidação, atualiza somente `slug` e `atualizadoEm` com precondition `currentDocument.updateTime`, impedindo escrita silenciosa se a banca foi modificada em paralelo.
 
 ## Falha parcial, recuperação e limites
@@ -69,6 +69,7 @@ O script **não** provisiona `platform_owner`, não cria Tenant B de produção,
 - hash tenant-scoped;
 - validação de `updateTime` e IDs duplicados antes de escritas;
 - alterações simultâneas de clientes e de slug durante APPLY antes da finalização.
+- leitura de verificação depois de criar índices e falha segura se um índice sumir ou mudar de titular.
 
 Comandos: `npm test`, `npm run lint`, `npm run build` e CI.
 
