@@ -172,7 +172,32 @@ describe("actual Firestore Emulator + Cloudflare Worker tenant boundary", () => 
       (await admin.firestore().doc(pathB).get()).data(),
     );
 
+    // Temporary trace for diagnosing real emulator transaction stalls; no PII.
+    const initialBegin = workerDb.beginTransaction.bind(workerDb);
+    const initialCommit = workerDb.commit.bind(workerDb);
+    const initialGet = workerDb.get.bind(workerDb);
+    const beginSpy = vi.spyOn(workerDb, "beginTransaction").mockImplementation(async () => {
+      console.error("[emulator-renewal] begin transaction");
+      const result = await initialBegin();
+      console.error("[emulator-renewal] began transaction");
+      return result;
+    });
+    const getSpy = vi.spyOn(workerDb, "get").mockImplementation(async (path, tx) => {
+      console.error("[emulator-renewal] get", tx ? "with tx" : "no tx");
+      const result = await initialGet(path, tx);
+      console.error("[emulator-renewal] got", tx ? "with tx" : "no tx");
+      return result;
+    });
+    const commitSpy = vi.spyOn(workerDb, "commit").mockImplementation(async (writes, tx) => {
+      console.error("[emulator-renewal] commit", Boolean(tx));
+      const result = await initialCommit(writes, tx);
+      console.error("[emulator-renewal] committed");
+      return result;
+    });
     const result = await handleClientRoute(await scopedContext("banca-a", "client/profile", "a".repeat(43)));
+    beginSpy.mockRestore();
+    getSpy.mockRestore();
+    commitSpy.mockRestore();
     expect(result?.status).toBe(200);
     const after = await testEnv.withSecurityRulesDisabled(async (admin) => {
       const db = admin.firestore();
