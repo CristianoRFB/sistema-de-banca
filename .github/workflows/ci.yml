@@ -59,7 +59,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install pinned browser test runner without changing lockfile
-        run: npm install --no-save --package-lock=false @playwright/test@1.56.1
+        run: npm install --no-save --package-lock=false @playwright/test@1.64.1
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Render real frontend with explicitly mocked demo API and test tenant isolation
