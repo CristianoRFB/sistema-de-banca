@@ -21,7 +21,7 @@ Nunca registrar a chave HMAC, ADC, tokens ou números de telefone em arquivos, m
 2. Autenticar a identidade autorizada via Google ADC;
 3. Executar `npm run migrate:multitenant` com `APPLY` ausente;
 4. O dry-run lê a banca original, todos os clientes pertinentes, duplicidade de slug e índices de telefone v2;
-5. A pré-validação rejeita slug já utilizado por outro tenant, slug reservado, mudança de slug preexistente sem revisão, colisão, telefone duplicado entre clientes e divergências entre os campos bruto/normalizado;
+5. A pré-validação rejeita slug já utilizado por outro tenant, slug reservado, mudança de slug preexistente sem revisão, colisão, IDs duplicados de clientes, telefone duplicado entre clientes, divergências entre os campos bruto/normalizado e ausência de `updateTime` confiável para atualizar o tenant;
 6. Revisar **contagens agregadas**, registro de backup/recuperação e autorização de produção.
 
 A pré-validação **não altera documentos**. A saída não contém telefones, identificadores individuais de clientes, hashes ou segredos.
@@ -39,11 +39,12 @@ O comando acima é um exemplo para shell Unix; adapte as variáveis ao terminal 
 - cria **somente índices ausentes** com create exclusivo (não sobrescreve índice alheio);
 - mantém documentos dos clientes, catálogos, listas, histórico e dados originais;
 - não altera o status `ativo` já existente da banca;
-- após os índices, atualiza somente `slug` e `atualizadoEm` com precondition `currentDocument.updateTime`, impedindo escrita silenciosa se a banca foi modificada em paralelo.
+- após criar os índices, **relê a lista de clientes** para verificar IDs e telefones canônicos inalterados e **consulta novamente a unicidade do slug**; havendo alteração concorrente, a etapa de finalização é recusada e deve-se refazer o dry-run;
+- depois dessa revalidação, atualiza somente `slug` e `atualizadoEm` com precondition `currentDocument.updateTime`, impedindo escrita silenciosa se a banca foi modificada em paralelo.
 
 ## Falha parcial, recuperação e limites
 
-**Não existe rollback destrutivo automático.** Se uma escrita de índice falhar depois de outras concluírem, as criações anteriores são mantidas. O comando informa quantas criações ocorreram e orienta:
+**Não existe rollback destrutivo automático.** Essas revalidações reduzem riscos de corrida, mas não substituem janela de manutenção, backup verificado ou verificação final de produção: mudanças podem ocorrer após a última leitura e antes da escrita final. Se uma escrita de índice falhar depois de outras concluírem, as criações anteriores são mantidas. O comando informa quantas criações ocorreram e orienta:
 
 1. interromper novas operações de migração;
 2. revisar a falha e preservar backup;
@@ -65,7 +66,9 @@ O script **não** provisiona `platform_owner`, não cria Tenant B de produção,
 - falha parcial/resume;
 - falha no PATCH sem exclusão de dados;
 - validação de configuração;
-- hash tenant-scoped.
+- hash tenant-scoped;
+- validação de `updateTime` e IDs duplicados antes de escritas;
+- alterações simultâneas de clientes e de slug durante APPLY antes da finalização.
 
 Comandos: `npm test`, `npm run lint`, `npm run build` e CI.
 
