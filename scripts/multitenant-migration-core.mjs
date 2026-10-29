@@ -155,6 +155,20 @@ export async function runMigration({ projectId, bankId, tenantSlug, pepper, appl
       await gateway.createPhoneIndex(action.documentId, bankId, action.clientId);
       createdCount += 1;
     }
+    // Read back every target index before declaring the migration safe.
+    // Prevent an incomplete or externally changed index from being mistaken
+    // for a successful migration solely because the write request returned.
+    const verifiedActions = plan.actions.filter((action) => action.documentId);
+    for (let offset = 0; offset < verifiedActions.length; offset += 20) {
+      const page = verifiedActions.slice(offset, offset + 20);
+      const actualIndexes = await Promise.all(page.map((action) => gateway.getPhoneIndex(action.documentId)));
+      for (let index = 0; index < page.length; index += 1) {
+        const actual = actualIndexes[index];
+        if (!actual || actual.fields.bancaId !== bankId || actual.fields.clienteId !== page[index].clientId) {
+          throw new Error("Phone index verification failed after writes; no tenant finalization was performed.");
+        }
+      }
+    }
     if (plan.tenantUpdateRequired) {
       // A customer created or edited while indexes are being written must not
       // be silently omitted from the bank once the canonical slug is enabled.
