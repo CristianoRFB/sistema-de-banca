@@ -5,6 +5,7 @@ import { FirestoreRest } from "../../cloudflare/worker/src/firebase/firestore-re
 import { handleClientRoute } from "../../cloudflare/worker/src/routes/client";
 import { handleTenantBootstrapRoute } from "../../cloudflare/worker/src/routes/tenant-bootstrap";
 import { hashClientSessionToken } from "../../cloudflare/worker/src/security";
+import { runMigration } from "../../scripts/multitenant-migration-core.mjs";
 import { resolveRequestTenant } from "../../cloudflare/worker/src/tenant";
 import type { Bindings, JsonObject, RequestContext } from "../../cloudflare/worker/src/types";
 
@@ -159,6 +160,70 @@ describe("actual Firestore Emulator + Cloudflare Worker tenant boundary", () => 
       .rejects.toMatchObject({ code: "session_invalid", status: 401 });
     await expect(handleClientRoute(await scopedContext("banca-a", "client/profile", "b".repeat(43))))
       .rejects.toMatchObject({ code: "session_invalid", status: 401 });
+  });
+
+  it("runs dry-run, APPLY and idempotent replay on real emulator indexes without mixing identical phones", async () => {
+    await testEnv.withSecurityRulesDisabled(async (admin) => {
+      const db = admin.firestore();
+      const gateway = {
+        async getTenant(id: string) {
+          const snap = await db.doc("bancas/" + id).get();
+          return snap.exists ? {
+            id: snap.id, fields: snap.data() ?? {},
+            updateTime: snap.updateTime?.toDate().toISOString() ?? null,
+          } : null;
+        },
+        async listClients(id: string) {
+          const rows = await db.collection("clientes").where("bancaId", "==", id).get();
+          return rows.docs.map((row) => ({ id: row.id, fields: row.data() }));
+        },
+        async findBySlug(slug: string) {
+          const rows = await db.collection("bancas").where("slug", "==", slug).get();
+          return rows.docs.map((row) => ({ id: row.id, fields: row.data() }));
+        },
+        async getPhoneIndex(hash: string) {
+          const row = await db.doc("indiceTelefonesClientes/" + hash).get();
+          return row.exists ? { id: row.id, fields: row.data() ?? {} } : null;
+        },
+        async createPhoneIndex(hash: string, tenantId: string, clientId: string) {
+          const ref = db.doc("indiceTelefonesClientes/" + hash);
+          await db.runTransaction(async (tx) => {
+            const existing = await tx.get(ref);
+            if (existing.exists) throw new Error("Exclusive create conflict");
+            tx.set(ref, { bancaId: tenantId, clienteId: clientId, indexVersion: 2 });
+          });
+        },
+        async patchTenant() {
+          throw new Error("Fixture banks already have canonical slugs; patch is not expected.");
+        },
+      };
+      const config = (bankId: string, tenantSlug: string) => ({
+        projectId, bankId, tenantSlug,
+        pepper: workerEnv.CLIENT_SESSION_PEPPER, gateway,
+      });
+
+      const beforeA = await runMigration(config("tenant-a", "banca-a"));
+      const beforeB = await runMigration(config("tenant-b", "banca-b"));
+      expect(beforeA.phoneIndexes).toMatchObject({ WOULD_CREATE: 1 });
+      expect(beforeB.phoneIndexes).toMatchObject({ WOULD_CREATE: 1 });
+      expect((await db.collection("indiceTelefonesClientes").get()).size).toBe(0);
+
+      const resultA = await runMigration({ ...config("tenant-a", "banca-a"), apply: true });
+      const resultB = await runMigration({ ...config("tenant-b", "banca-b"), apply: true });
+      expect(resultA.createdCount).toBe(1);
+      expect(resultB.createdCount).toBe(1);
+      const allIndexes = await db.collection("indiceTelefonesClientes").get();
+      expect(allIndexes.size).toBe(2);
+      expect(new Set(allIndexes.docs.map((row) => row.data().bancaId))).toEqual(new Set(["tenant-a", "tenant-b"]));
+
+      const replayA = await runMigration({ ...config("tenant-a", "banca-a"), apply: true });
+      const replayB = await runMigration({ ...config("tenant-b", "banca-b"), apply: true });
+      expect(replayA.createdCount).toBe(0);
+      expect(replayB.createdCount).toBe(0);
+      expect((await db.collection("indiceTelefonesClientes").get()).size).toBe(2);
+      expect((await db.doc("bancas/tenant-a").get()).data()?.slug).toBe("banca-a");
+      expect((await db.doc("bancas/tenant-b").get()).data()?.slug).toBe("banca-b");
+    });
   });
 
   it("keeps all direct browser reads and writes denied, even with admin claims", async () => {
