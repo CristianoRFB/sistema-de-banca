@@ -265,4 +265,26 @@ describe("actual Firestore Emulator + Cloudflare Worker tenant boundary", () => 
     await assertFails(b.doc("bancas/tenant-a").set({ slug: "hijacked" }));
     await assertFails(publicDb.collection("clientes").get());
   });
+  it("refuses to resurrect a revoked session using a stale Firestore updateTime", async () => {
+    const path = "sessoesClientes/" + await hashClientSessionToken(workerEnv, "a".repeat(43));
+    const prior = await workerDb.get(path);
+    expect(prior?.updateTime).toBeTruthy();
+    await testEnv.withSecurityRulesDisabled(async (admin) => {
+      await admin.firestore().doc(path).update({
+        ativa: false, revogadaEm: new Date().toISOString(),
+      });
+    });
+    await expect(workerDb.commit([{
+      path, data: { ...prior!.data, ativa: true },
+      updateTime: prior!.updateTime,
+    }])).rejects.toThrow();
+
+    let persisted: JsonObject | undefined;
+    await testEnv.withSecurityRulesDisabled(async (admin) => {
+      persisted = (await admin.firestore().doc(path).get()).data();
+    });
+    expect(persisted?.ativa).toBe(false);
+    expect(persisted?.revogadaEm).toBeTruthy();
+  });
+
 });
