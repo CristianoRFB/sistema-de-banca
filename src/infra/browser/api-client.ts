@@ -48,7 +48,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     : normalizedPath;
   const requestUrl = `${apiBaseUrl}${tenantScopedPath}`;
   const method = (init.method ?? 'GET').toUpperCase();
-  const isPublicCatalogRead = method === 'GET' && /^\/api\/t\/[a-z0-9-]+\/public\/(?:banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(new URL(requestUrl, window.location.origin).pathname);
+  const isPublicCatalogRead = method === 'GET' && /^\/api\/t\/[a-z0-9-]+\/public\/(?:tenant|banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(new URL(requestUrl, window.location.origin).pathname);
   const response = await fetch(requestUrl, {
     ...init,
     headers,
