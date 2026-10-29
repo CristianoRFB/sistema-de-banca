@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Keep only the latest CI run per branch/ref; previous pushes must not block
+# final HEAD validation when several safe commits land in succession.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
