@@ -168,16 +168,20 @@ describe("actual Firestore Emulator + Cloudflare Worker tenant boundary", () => 
     await testEnv.withSecurityRulesDisabled(async (admin) => {
       await admin.firestore().doc(pathA).update({ expiraEm: new Date(Date.now() + 86_400_000).toISOString() });
     });
-    const before = await testEnv.withSecurityRulesDisabled(async (admin) =>
-      (await admin.firestore().doc(pathB).get()).data(),
-    );
+    // withSecurityRulesDisabled returns void; collect snapshot values explicitly
+    // from the privileged callback, never assume it propagates return values.
+    let before: JsonObject | undefined;
+    await testEnv.withSecurityRulesDisabled(async (admin) => {
+      before = (await admin.firestore().doc(pathB).get()).data();
+    });
 
     const result = await handleClientRoute(await scopedContext("banca-a", "client/profile", "a".repeat(43)));
     expect(result?.status).toBe(200);
-    const after = await testEnv.withSecurityRulesDisabled(async (admin) => {
+    let after: { a: JsonObject | undefined; b: JsonObject | undefined } = { a: undefined, b: undefined };
+    await testEnv.withSecurityRulesDisabled(async (admin) => {
       const db = admin.firestore();
       const [a, b] = await Promise.all([db.doc(pathA).get(), db.doc(pathB).get()]);
-      return { a: a.data(), b: b.data() };
+      after = { a: a.data(), b: b.data() };
     });
     expect(Date.parse(String(after.a?.expiraEm)) - Date.now()).toBeGreaterThan(20 * 86_400_000);
     expect(after.b).toEqual(before);
