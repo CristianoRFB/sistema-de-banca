@@ -24,6 +24,21 @@ export function normalizeMigrationPhone(rawPhone) {
   return digits;
 }
 
+/**
+ * Preserve the canonical phone used by the Worker and stop on a conflicting
+ * legacy raw/normalized pair. Never guess which of two phones belongs to a client.
+ */
+export function canonicalClientPhone(fields = {}) {
+  const normalized = normalizeMigrationPhone(fields.telefoneNormalizado);
+  const raw = normalizeMigrationPhone(fields.telefone);
+  const hasNormalized = PHONE_PATTERN.test(normalized);
+  const hasRaw = PHONE_PATTERN.test(raw);
+  if (hasNormalized && hasRaw && normalized !== raw) {
+    throw new Error("Client has conflicting raw and normalized phone values; manual review required.");
+  }
+  return hasNormalized ? normalized : hasRaw ? raw : "";
+}
+
 export function tenantPhoneHash(pepper, bankId, phone) {
   return createHmac("sha256", pepper).update(`customer-phone:v2:${bankId}:${phone}`).digest("base64url");
 }
@@ -48,7 +63,7 @@ export function createMigrationPlan({ bankId, tenantSlug, tenant, conflictingSlu
     if (!client?.id || !/^[A-Za-z0-9_-]{1,128}$/.test(client.id)) {
       throw new Error("Invalid client ID in migration source.");
     }
-    const phone = normalizeMigrationPhone(client.fields.telefoneNormalizado ?? client.fields.telefone);
+    const phone = canonicalClientPhone(client.fields);
     if (!PHONE_PATTERN.test(phone)) {
       actions.push({ clientId: client.id, status: "SKIP_INVALID_PHONE" });
       continue;
@@ -91,7 +106,7 @@ export async function runMigration({ projectId, bankId, tenantSlug, pepper, appl
   // Preflight every target index before performing any write.
   const indexes = new Map();
   const hashes = [...new Set(clients
-    .map((client) => normalizeMigrationPhone(client.fields.telefoneNormalizado ?? client.fields.telefone))
+    .map((client) => canonicalClientPhone(client.fields))
     .filter((phone) => PHONE_PATTERN.test(phone))
     .map((phone) => tenantPhoneHash(pepper, bankId, phone)))];
   for (let offset = 0; offset < hashes.length; offset += 20) {
