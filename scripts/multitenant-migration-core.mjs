@@ -15,6 +15,15 @@ export function validateMigrationSettings({ projectId, bankId, tenantSlug, peppe
   }
 }
 
+/** Keep the migration's phone canonicalization identical to the Worker. */
+export function normalizeMigrationPhone(rawPhone) {
+  let digits = String(rawPhone ?? "").replace(/\D/g, "");
+  if (digits.startsWith("0055") && /^0055\d{10,11}$/.test(digits)) digits = digits.slice(2);
+  if (digits.startsWith("55") && /^55\d{10,11}$/.test(digits)) return digits;
+  if (/^\d{10,11}$/.test(digits)) return "55" + digits;
+  return digits;
+}
+
 export function tenantPhoneHash(pepper, bankId, phone) {
   return createHmac("sha256", pepper).update(`customer-phone:v2:${bankId}:${phone}`).digest("base64url");
 }
@@ -39,7 +48,7 @@ export function createMigrationPlan({ bankId, tenantSlug, tenant, conflictingSlu
     if (!client?.id || !/^[A-Za-z0-9_-]{1,128}$/.test(client.id)) {
       throw new Error("Invalid client ID in migration source.");
     }
-    const phone = String(client.fields.telefoneNormalizado ?? client.fields.telefone ?? "").replace(/\D/g, "");
+    const phone = normalizeMigrationPhone(client.fields.telefoneNormalizado ?? client.fields.telefone);
     if (!PHONE_PATTERN.test(phone)) {
       actions.push({ clientId: client.id, status: "SKIP_INVALID_PHONE" });
       continue;
@@ -82,7 +91,7 @@ export async function runMigration({ projectId, bankId, tenantSlug, pepper, appl
   // Preflight every target index before performing any write.
   const indexes = new Map();
   const hashes = [...new Set(clients
-    .map((client) => String(client.fields.telefoneNormalizado ?? client.fields.telefone ?? "").replace(/\D/g, ""))
+    .map((client) => normalizeMigrationPhone(client.fields.telefoneNormalizado ?? client.fields.telefone))
     .filter((phone) => PHONE_PATTERN.test(phone))
     .map((phone) => tenantPhoneHash(pepper, bankId, phone)))];
   for (let offset = 0; offset < hashes.length; offset += 20) {
