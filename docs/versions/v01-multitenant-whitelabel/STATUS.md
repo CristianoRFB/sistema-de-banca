@@ -16,7 +16,12 @@
 - script de migração aditiva, dry-run, guardas de escrita e retomada idempotente;
 - verificação pré-finalização de índices/telefones/slug contra alterações concorrentes, sem execução em produção;
 - bootstrap de white-label básico;
-- CI GitHub para lint/build/test/worker:typecheck.
+- CI GitHub para lint/build/test/worker:typecheck/docs:check;
+- suíte `tests/integration` e testes de migração incluídos no `npm test` padrão;
+- job isolado de Firestore Emulator (`demo-banca`) exercitando Worker REST + Tenant A/B, Rules e migração fictícia;
+- renovação de sessão por commit com precondition `updateTime`, com testes de concorrência e revogação.
+
+Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 
 ## Evidências automatizadas (sem acesso a dados reais)
 - testes de integração de autenticação Firebase assinada e isolamento A × B;
