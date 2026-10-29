@@ -60,6 +60,8 @@ export function createMigrationPlan({ bankId, tenantSlug, tenant, conflictingSlu
     throw new Error("The source banca is missing a valid updateTime; refusing writes without a Firestore precondition.");
   }
 
+  // Duplicate source rows must never be interpreted as separate safe writes.
+  clientPhoneSnapshot(clients);
   const actions = [];
   const plannedHashes = new Map();
   for (const client of clients) {
