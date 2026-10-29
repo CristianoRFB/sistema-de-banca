@@ -30,6 +30,16 @@ const ConfiguracoesPage = lazy(() => import('../pages/admin/ConfiguracoesPage').
 const PlatformLoginPage = lazy(() => import('../pages/platform/PlatformLoginPage').then(({ PlatformLoginPage: page }) => ({ default: page })));
 const PlatformAdminPage = lazy(() => import('../pages/platform/PlatformAdminPage').then(({ PlatformAdminPage: page }) => ({ default: page })));
 
+/**
+ * Remount public layout + all nested pages when switching bank slugs.
+ * This also discards in-flight catalogue/profile state for the previous bank.
+ */
+function VerifiedPublicTenantBoundary() {
+  const { tenantSlug } = useParams();
+  const slug = normalizeTenantSlug(tenantSlug);
+  return <PublicShell key={slug} />;
+}
+
 function TenantAdminGate() {
   const { user, loading } = useAdminAuth();
   const { tenantSlug } = useParams();
@@ -96,7 +106,7 @@ export function AppRoutes() {
         <Route index element={<PlatformAdminPage />} />
       </Route>
 
-      <Route path="/:tenantSlug" element={<PublicShell />}>
+      <Route path="/:tenantSlug" element={<VerifiedPublicTenantBoundary />}>
         <Route index element={<HomePage />} />
         <Route path="catalogo" element={<CatalogoPage />} />
         <Route path="produto/:itemReparteId" element={<ProdutoPage />} />
