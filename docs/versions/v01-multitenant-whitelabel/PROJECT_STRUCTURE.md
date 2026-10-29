@@ -13,7 +13,8 @@
 - `cloudflare/worker/src/routes/`: public/client/admin/platform;
 - `cloudflare/worker/src/jobs/`: jobs tenant-aware;
 - `scripts/`: provisionamento, migração e docs;
-- `tests/`: unit e Firestore;
+- `tests/`: unit, integration, Firestore Emulator e browser smoke Chromium;
+- `playwright.config.mjs`: execução do frontend Vite e screenshots de interface com API sintética;
 - `docs/`: documentação canônica e histórica.
 
 A árvore descreve a branch de implementação. Não implica deploy em produção.
