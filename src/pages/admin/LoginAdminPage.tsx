@@ -23,10 +23,10 @@ export function LoginAdminPage() {
   useEffect(() => { if (user) navigate(panelPath, { replace: true }); }, [user, navigate, panelPath]);
   useEffect(() => {
     let active = true;
-    setTenant(null);
     getTenantBootstrap().then((value) => { if (active) setTenant(value); }).catch(() => undefined);
     return () => { active = false; };
   }, [slug]);
+  const verifiedTenant = tenant?.slug === slug && tenant.active ? tenant : null;
   if (user) return <Navigate to={panelPath} replace />;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -40,7 +40,7 @@ export function LoginAdminPage() {
     <main className="admin-login-page">
       <section className="admin-login-card">
         <Link className="back-link" to={tenantPath(slug)}><ArrowLeft size={17} /> Voltar ao site</Link>
-        <div className="admin-login-brand"><span className="brand-mark">B<span>.</span></span><span><b>{tenant?.name || 'Banca'}</b><small>ACESSO DA EQUIPE</small></span></div>
+        <div className="admin-login-brand"><span className="brand-mark">B<span>.</span></span><span><b>{verifiedTenant?.name || 'Banca'}</b><small>ACESSO DA EQUIPE</small></span></div>
         <span className="eyebrow">OPERAÇÃO / LOGIN SEGURO</span>
         <h1>A banca,<br /><em>por dentro.</em></h1>
         <p className="muted-copy">Entre com sua conta administrativa para gerenciar listas, reservas e recolhimentos.</p>
@@ -51,9 +51,9 @@ export function LoginAdminPage() {
           {error && <p className="form-error" role="alert">{error}</p>}
           <Button block disabled={!configured || loading}>{loading ? 'Entrando…' : 'Entrar no painel'} <ArrowRight size={17} /></Button>
         </form>
-        <p className="privacy-note"><Store size={14} /> {tenant?.name || 'Banca'} · {tenant?.address || 'Localização não informada'}</p>
+        <p className="privacy-note"><Store size={14} /> {verifiedTenant?.name || 'Banca'} · {verifiedTenant?.address || 'Localização não informada'}</p>
       </section>
-      <div className="admin-login-art"><span>{(tenant?.name || 'Banca').split(' ').slice(0, 2).map((part) => part.toLocaleUpperCase('pt-BR')).join('\n')}</span><b>ADMIN<br />TENANT</b><i>✳</i></div>
+      <div className="admin-login-art"><span>{(verifiedTenant?.name || 'Banca').split(' ').slice(0, 2).map((part) => part.toLocaleUpperCase('pt-BR')).join('\n')}</span><b>ADMIN<br />TENANT</b><i>✳</i></div>
     </main>
   );
 }
