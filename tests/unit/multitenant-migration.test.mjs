@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { hashCustomerPhone, normalizePhone } from "../../cloudflare/worker/src/security.ts";
 import {
   normalizeMigrationPhone, runMigration, tenantPhoneHash, validateMigrationSettings,
 } from "../../scripts/multitenant-migration-core.mjs";
@@ -178,6 +179,20 @@ describe("additive migration with no real Firebase connection", () => {
       .rejects.toThrow("conflicting raw and normalized phone");
     expect(db.changes.create).toHaveLength(0);
     expect(db.changes.patch).toHaveLength(0);
+  });
+
+  it("generates exactly the same index IDs and canonical phones as the production Worker", async () => {
+    const phones = ["17 99999-1234", "+55 (17) 99999-1234", "0055 17 99999-1234"];
+    for (const raw of phones) {
+      const normalized = normalizeMigrationPhone(raw);
+      expect(normalized).toBe(normalizePhone(raw));
+      const nodeHmac = tenantPhoneHash(config.pepper, config.bankId, normalized);
+      const workerHmac = await hashCustomerPhone({
+        CLIENT_SESSION_PEPPER: config.pepper,
+        BANCA_ID: config.bankId,
+      }, normalized);
+      expect(nodeHmac).toBe(workerHmac);
+    }
   });
 
   it("computes deterministic, tenant-separated hashes without exposing customer numbers", () => {
