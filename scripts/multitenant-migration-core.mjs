@@ -56,6 +56,9 @@ export function createMigrationPlan({ bankId, tenantSlug, tenant, conflictingSlu
   if (conflictingSlugs.some((match) => match.id !== bankId)) {
     throw new Error("The requested slug belongs to another tenant.");
   }
+  if (currentSlug !== tenantSlug && (!tenant.updateTime || !Number.isFinite(Date.parse(tenant.updateTime)))) {
+    throw new Error("The source banca is missing a valid updateTime; refusing writes without a Firestore precondition.");
+  }
 
   const actions = [];
   const plannedHashes = new Map();
@@ -95,6 +98,31 @@ export function createMigrationPlan({ bankId, tenantSlug, tenant, conflictingSlu
   };
 }
 
+/**
+ * Check only the identity and canonical phone fields that influence index
+ * creation. Other unrelated customer changes need not block an additive run.
+ * This runs before and immediately after writes; live changes after the last
+ * check still require an operational maintenance window and final verification.
+ */
+function clientPhoneSnapshot(clients) {
+  const byId = new Map();
+  for (const client of clients) {
+    if (!client || typeof client.id !== "string" || byId.has(client.id)) {
+      throw new Error("Client source has missing or duplicated document IDs; manual review required.");
+    }
+    byId.set(client.id, canonicalClientPhone(client.fields));
+  }
+  return byId;
+}
+
+function assertUnchangedClientPhones(before, after) {
+  const first = clientPhoneSnapshot(before);
+  const second = clientPhoneSnapshot(after);
+  if (first.size !== second.size || [...first].some(([id, phone]) => second.get(id) !== phone)) {
+    throw new Error("Clients changed during migration. Stop finalization, rerun dry-run and reconcile the new client set.");
+  }
+}
+
 export async function runMigration({ projectId, bankId, tenantSlug, pepper, apply = false, gateway }) {
   validateMigrationSettings({ projectId, bankId, tenantSlug, pepper });
   const tenant = await gateway.getTenant(bankId);
@@ -126,6 +154,14 @@ export async function runMigration({ projectId, bankId, tenantSlug, pepper, appl
       createdCount += 1;
     }
     if (plan.tenantUpdateRequired) {
+      // A customer created or edited while indexes are being written must not
+      // be silently omitted from the bank once the canonical slug is enabled.
+      const freshClients = await gateway.listClients(bankId);
+      assertUnchangedClientPhones(clients, freshClients);
+      const freshSlugMatches = await gateway.findBySlug(tenantSlug);
+      if (freshSlugMatches.some((match) => match.id !== bankId)) {
+        throw new Error("The requested slug was claimed by another tenant during migration; no bank patch was applied.");
+      }
       await gateway.patchTenant(bankId, tenantSlug, plan.sourceUpdateTime);
     }
   } catch (error) {
