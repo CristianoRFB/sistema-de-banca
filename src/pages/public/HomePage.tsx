@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, MapPin, Search, Sparkles } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTenantPublic } from '../../app/tenant-public-context';
-import { normalizeTenantSlug, tenantPath } from '../../app/tenant';
+import { DEFAULT_TENANT_SLUG, normalizeTenantSlug, tenantPath } from '../../app/tenant';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -77,7 +77,7 @@ export function HomePage() {
       setSource('live');
       setLoadedCatalogAttempt(catalogAttempt);
     }).catch(async () => {
-      if (import.meta.env.DEV && active) {
+      if (import.meta.env.DEV && slug === DEFAULT_TENANT_SLUG && active) {
         const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
         if (active) { setItems(demoCatalogo.slice(0, 6)); setSource('demo'); setLoadedCatalogAttempt(catalogAttempt); }
       } else if (active) {
