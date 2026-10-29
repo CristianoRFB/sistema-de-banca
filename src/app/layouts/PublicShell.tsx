@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useParams } from 'react-router-dom';
 import { BookOpen, House, MapPin, UserRound } from 'lucide-react';
-import { BANCA } from '../config';
+import { TenantPublicProvider } from '../tenant-public-context';
 import { normalizeTenantSlug, tenantPanelPath, tenantPath } from '../tenant';
 import { isUsingCachedPublicData, subscribeCachedPublicData } from '../../infra/browser/api-client';
 import { getTenantBootstrap, type TenantBootstrap } from '../../features/banca/tenant-bootstrap';
@@ -13,6 +13,8 @@ export function PublicShell() {
   const slug = normalizeTenantSlug(tenantSlug);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [tenant, setTenant] = useState<TenantBootstrap | null>(null);
+  const [tenantState, setTenantState] = useState<'loading' | 'ready' | 'failure'>('loading');
+  const [attempt, setAttempt] = useState(0);
   const usingCachedData = useSyncExternalStore(subscribeCachedPublicData, isUsingCachedPublicData, () => false);
 
   const nav = [
@@ -24,17 +26,25 @@ export function PublicShell() {
 
   useEffect(() => {
     let active = true;
+    setTenantState('loading');
+    setTenant(null);
+    document.title = 'SaaS Banca';
     getTenantBootstrap()
       .then((value) => {
         if (!active) return;
+        if (!value.active || value.slug !== slug) {
+          setTenantState('failure');
+          return;
+        }
         setTenant(value);
         document.title = value.name;
+        setTenantState('ready');
       })
       .catch(() => {
-        if (active) setTenant(null);
+        if (active) setTenantState('failure');
       });
     return () => { active = false; };
-  }, [slug]);
+  }, [slug, attempt]);
 
   useEffect(() => {
     const updateOnlineStatus = () => setOnline(navigator.onLine);
@@ -46,9 +56,9 @@ export function PublicShell() {
     };
   }, []);
 
-  const name = tenant?.name || BANCA.name;
-  const phoneDigits = (tenant?.phone || BANCA.phone).replace(/\D/g, '');
-  const tagline = tenant?.branding.tagline || (tenant?.address ? 'Encontre a banca em ' + tenant.address + '.' : 'Feita para leitores de ' + BANCA.city + '.');
+  const name = tenant?.name ?? 'Banca';
+  const phoneDigits = (tenant?.phone ?? '').replace(/\D/g, '');
+  const tagline = tenant?.branding.tagline || (tenant?.address ? 'Encontre a banca em ' + tenant.address + '.' : 'Sua banca de leitura.');
   const style: TenantStyle = {
     '--lime': tenant?.branding.primaryColor ?? undefined,
     '--orange': tenant?.branding.accentColor ?? undefined,
@@ -56,7 +66,21 @@ export function PublicShell() {
     '--ink': tenant?.branding.textColor ?? undefined,
   };
 
+  // Do not mount child pages or expose another bank's fallback details until
+  // this slug is verified by the backend. Also block unknown/disabled tenants.
+  if (tenantState === 'loading' || !tenant && tenantState !== 'failure') {
+    return <div className="page-wrap loading-block" role="status">Confirmando a banca…</div>;
+  }
+  if (tenantState === 'failure' || !tenant) {
+    return <div className="page-wrap empty-state" role="alert">
+      <h1>Não foi possível abrir esta banca.</h1>
+      <p>Confira o endereço ou a conexão. Nenhuma informação de outra banca será exibida.</p>
+      <button className="button button--secondary" type="button" onClick={() => setAttempt((value) => value + 1)}>Tentar novamente</button>
+    </div>;
+  }
+
   return (
+    <TenantPublicProvider tenant={tenant}>
     <div className="site-shell" data-tenant={slug} style={style}>
       {(!online || usingCachedData) && (
         <div className="offline-notice" role="status" aria-live="polite">
@@ -99,5 +123,6 @@ export function PublicShell() {
         ))}
       </nav>
     </div>
+    </TenantPublicProvider>
   );
 }
