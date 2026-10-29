@@ -169,11 +169,11 @@ export async function runMigration({ projectId, bankId, tenantSlug, pepper, appl
         }
       }
     }
+    // Even if the canonical slug was already active, repeat APPLY must not
+    // claim success when clients changed during the index repair process.
+    const freshClients = await gateway.listClients(bankId);
+    assertUnchangedClientPhones(clients, freshClients);
     if (plan.tenantUpdateRequired) {
-      // A customer created or edited while indexes are being written must not
-      // be silently omitted from the bank once the canonical slug is enabled.
-      const freshClients = await gateway.listClients(bankId);
-      assertUnchangedClientPhones(clients, freshClients);
       const freshSlugMatches = await gateway.findBySlug(tenantSlug);
       if (freshSlugMatches.some((match) => match.id !== bankId)) {
         throw new Error("The requested slug was claimed by another tenant during migration; no bank patch was applied.");
