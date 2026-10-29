@@ -21,7 +21,7 @@ Nunca registrar a chave HMAC, ADC, tokens ou números de telefone em arquivos, m
 2. Autenticar a identidade autorizada via Google ADC;
 3. Executar `npm run migrate:multitenant` com `APPLY` ausente;
 4. O dry-run lê a banca original, todos os clientes pertinentes, duplicidade de slug e índices de telefone v2;
-5. A pré-validação rejeita slug já utilizado por outro tenant, slug reservado, mudança de slug preexistente sem revisão, colisão e telefone duplicado entre clientes;
+5. A pré-validação rejeita slug já utilizado por outro tenant, slug reservado, mudança de slug preexistente sem revisão, colisão, telefone duplicado entre clientes e divergências entre os campos bruto/normalizado;
 6. Revisar **contagens agregadas**, registro de backup/recuperação e autorização de produção.
 
 A pré-validação **não altera documentos**. A saída não contém telefones, identificadores individuais de clientes, hashes ou segredos.
@@ -61,7 +61,7 @@ O script **não** provisiona `platform_owner`, não cria Tenant B de produção,
 - dry-run sem escrita;
 - APPLY idempotente e preservação do estado ativo/inativo;
 - slug duplicado e índice conflitante;
-- telefone duplicado;
+- telefone duplicado e campos de telefone inconsistentes;
 - falha parcial/resume;
 - falha no PATCH sem exclusão de dados;
 - validação de configuração;
