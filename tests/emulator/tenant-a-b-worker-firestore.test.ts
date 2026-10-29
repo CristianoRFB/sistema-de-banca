@@ -56,6 +56,7 @@ async function setupWorkerEmulatorBridge(): Promise<void> {
       const emulatorUrl = "http://" + host + "/" + url.slice(prefix.length);
       return rawFetch(emulatorUrl, init);
     }
+    if (url.startsWith("http://" + host + "/")) return rawFetch(input, init);
     throw new Error("Unexpected external request in emulator integration test.");
   });
   workerDb = new FirestoreRest(workerEnv);
