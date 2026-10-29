@@ -8,7 +8,7 @@ import { catalogoRepository } from '../../features/catalogo/catalogo.repository'
 import { ReservarProdutoSheet } from '../../features/reservas/components/ReservarProdutoSheet';
 import type { ProdutoCatalogo } from '../../features/catalogo/catalogo.types';
 import { useTenantPublic } from '../../app/tenant-public-context';
-import { currentTenantSlug, tenantPath } from '../../app/tenant';
+import { currentTenantSlug, DEFAULT_TENANT_SLUG, tenantPath } from '../../app/tenant';
 
 export function ProdutoPage() {
   const tenant = useTenantPublic();
@@ -27,7 +27,7 @@ export function ProdutoPage() {
     catalogoRepository.get(itemReparteId).then((value) => {
       if (active) { setProduct(value); setDemo(false); setLoadState('ready'); setLoadedRequestKey(requestKey); }
     }).catch(async (cause: unknown) => {
-      if (import.meta.env.DEV) {
+      if (import.meta.env.DEV && currentTenantSlug() === DEFAULT_TENANT_SLUG) {
         const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
         const sample = demoCatalogo.find((item) => itemReparteId === item.itemReparteId);
         if (!active) return;
