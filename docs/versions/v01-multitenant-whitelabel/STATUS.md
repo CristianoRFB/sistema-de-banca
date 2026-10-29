@@ -13,9 +13,17 @@
 - validação de membership antes do painel local;
 - suporte temporário de leitura para Platform Owner, com expiração, revogação e auditoria de concessão/revogação (sem consentimento separado do tenant);
 - índice de telefone v2 tenant-scoped;
-- script de migração aditiva;
+- script de migração aditiva, dry-run, guardas de escrita e retomada idempotente;
+- verificação pré-finalização de índices/telefones/slug contra alterações concorrentes, sem execução em produção;
 - bootstrap de white-label básico;
 - CI GitHub para lint/build/test/worker:typecheck.
+
+## Evidências automatizadas (sem acesso a dados reais)
+- testes de integração de autenticação Firebase assinada e isolamento A × B;
+- testes de slugs, permissões por tenant, suporte de leitura com expiração e negação de privilégios;
+- testes do catálogo, cursores e chaves de idempotência tenant-scoped;
+- testes de migração em gateway de memória: dry-run, colisões, retomada e falhas simultâneas;
+- testes não substituem Firestore real, homologação nem execução autorizada do APPLY.
 
 ## Ainda não comprovado em produção
 - migração real do Firestore da Banca Ana Maria;
