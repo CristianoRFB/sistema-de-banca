@@ -17,6 +17,8 @@
 - verificação pré-finalização de índices/telefones/slug contra alterações concorrentes, sem execução em produção;
 - bootstrap de white-label básico;
 - CI GitHub para lint/build/test/worker:typecheck/docs:check;
+- proteção fail-closed no bootstrap da área pública, limpeza de estado quando muda o slug e remoção de fallbacks de branding/contato da Banca Ana Maria em outras bancas;
+- Chromium CI para smoke browser em desktop/mobile com duas APIs fictícias, com screenshots de UI executada publicados como artefato temporário (não produção);
 - suíte `tests/integration` e testes de migração incluídos no `npm test` padrão;
 - job isolado de Firestore Emulator (`demo-banca`) exercitando Worker REST + Tenant A/B, Rules e migração fictícia;
 - renovação de sessão por commit com precondition `updateTime`, com testes de concorrência e revogação.
