@@ -11,6 +11,7 @@
     "provision:admin": "node scripts/provision-admin.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:emulator": "vitest run --config vitest.emulator.config.ts",
     "worker:typecheck": "tsc -p cloudflare/worker/tsconfig.json",
     "worker:types": "wrangler types --config cloudflare/worker/wrangler.toml cloudflare/worker/worker-configuration.d.ts --strict-vars=false && node scripts/normalize-worker-types.mjs",
     "worker:dev": "wrangler dev --config cloudflare/worker/wrangler.toml",
