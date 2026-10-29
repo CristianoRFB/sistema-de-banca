@@ -114,11 +114,11 @@ beforeAll(async () => {
       }),
       db.doc("sessoesClientes/" + sessionA).set({
         bancaId: "tenant-a", clienteId: "customer-a",
-        ativa: true, expiraEm: new Date(Date.now() + 86_400_000).toISOString(),
+        ativa: true, expiraEm: new Date(Date.now() + 25 * 86_400_000).toISOString(),
       }),
       db.doc("sessoesClientes/" + sessionB).set({
         bancaId: "tenant-b", clienteId: "customer-b",
-        ativa: true, expiraEm: new Date(Date.now() + 86_400_000).toISOString(),
+        ativa: true, expiraEm: new Date(Date.now() + 25 * 86_400_000).toISOString(),
       }),
     ]);
   });
