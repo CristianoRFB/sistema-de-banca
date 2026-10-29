@@ -3,6 +3,7 @@ import { Search, SlidersHorizontal } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { useTenantPublic } from '../../app/tenant-public-context';
+import { DEFAULT_TENANT_SLUG } from '../../app/tenant';
 import { Input } from '../../components/ui/Input';
 import { ProdutoCardTipografico } from '../../features/catalogo/components/ProdutoCardTipografico';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
@@ -53,7 +54,7 @@ export function CatalogoPage() {
         setHasMore(page.temMais);
         setDemo(false);
       }).catch(async () => {
-        if (import.meta.env.DEV && active) {
+        if (import.meta.env.DEV && tenant?.slug === DEFAULT_TENANT_SLUG && active) {
           const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
           if (!active) return;
           setItems(demoCatalogo);
