@@ -145,20 +145,21 @@ export async function getClientIdentity(ctx: RequestContext): Promise<ClientIden
     throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
   }
   if (sessionExpiresAt - Date.now() <= CLIENT_SESSION_RENEWAL_THRESHOLD_MS) {
+    if (!sessionDoc.updateTime) {
+      // A renewal must never overwrite a revoked or concurrently changed
+      // session without a Firestore document-version precondition.
+      throw new HttpError({ code: "session_invalid", message: "The client session cannot be renewed safely.", status: 401 });
+    }
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 30 * 86_400_000).toISOString();
-    await ctx.db.transact(async (transaction) => {
-      const current = await transaction.get(`sessoesClientes/${sessionId}`);
-      const currentExpiry = Date.parse(String(current?.data.expiraEm ?? ""));
-      if (!current || current.data.ativa !== true || current.data.bancaId !== ctx.env.BANCA_ID || current.data.clienteId !== clientId || !Number.isFinite(currentExpiry) || currentExpiry <= now.getTime()) {
-        throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
-      }
-      transaction.set(`sessoesClientes/${sessionId}`, {
-        ...current.data,
-        expiraEm: expiresAt,
-        ultimoAcesso: now.toISOString(),
-      });
-    });
+    // Firestore conditional commit is atomic. Unlike a second read within a
+    // transaction, the updateTime precondition never permits stale session
+    // data to overwrite a revocation or membership change.
+    await ctx.db.commit([{
+      path: `sessoesClientes/${sessionId}`,
+      data: { ...sessionDoc.data, expiraEm: expiresAt, ultimoAcesso: now.toISOString() },
+      updateTime: sessionDoc.updateTime,
+    }]);
   }
   return { sessionId, clientId, session: sessionDoc.data, client: clientDoc.data };
 }
