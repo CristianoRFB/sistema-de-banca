@@ -118,6 +118,29 @@ test('mobile: both real tenant frontends remain usable and distinguishable', asy
   await screenshot(page, 'banca-b-catalogo-mobile');
 });
 
+
+test('admin entry points render without implying operational access', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/login');
+  await expect(page.getByRole('heading', { name: /Administração.*da plataforma/ })).toBeVisible();
+  await expect(page.getByText('PLATFORM OWNER').first()).toBeVisible();
+  await screenshot(page, 'platform-login-desktop');
+
+  await page.goto('/banca-b/painel/login');
+  await expect(page.locator('.admin-login-brand b')).toHaveText('Banca B');
+  await expect(page.getByText('Banca Ana Maria')).toHaveCount(0);
+  await screenshot(page, 'banca-b-login-desktop');
+});
+
+test('customer login entry remains scoped to the current mobile tenant', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/banca-b/cliente/perfil');
+  await expect(page.getByRole('heading', { name: /Seu perfil/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Banca B, início' })).toBeVisible();
+  await expect(page.getByText('Banca Ana Maria')).toHaveCount(0);
+  await screenshot(page, 'banca-b-cliente-perfil-mobile');
+});
+
 test('unknown tenant fails closed without showing Ana Maria or another tenant', async ({ page }) => {
   await page.goto('/tenant-desconhecido');
   await expect(page.getByRole('alert')).toContainText('Não foi possível abrir esta banca.');
