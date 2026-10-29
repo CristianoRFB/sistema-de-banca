@@ -41,6 +41,9 @@ async function setupWorkerEmulatorBridge(): Promise<void> {
     }),
     CLIENT_SESSION_PEPPER: "emulator-only-tenant-test-pepper-never-for-production",
     CORS_ORIGINS: "https://banca.example.test",
+    // A real deployment provides this Cloudflare binding. The emulator
+    // fixture explicitly allows calls without changing production fail-closed logic.
+    CLIENT_RATE_LIMITER: { limit: async () => ({ success: true }) },
     BANCA_ID: "tenant-a",
   } as Bindings;
 
