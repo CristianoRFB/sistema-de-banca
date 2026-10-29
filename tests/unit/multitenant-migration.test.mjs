@@ -266,6 +266,22 @@ describe("additive migration with no real Firebase connection", () => {
     expect(db.changes.patch).toHaveLength(0);
   });
 
+  it("does not report a successful repair if new customers appear while an existing slug is active", async () => {
+    const db = gateway({ fields: { slug: config.tenantSlug } });
+    const original = db.listClients;
+    let calls = 0;
+    db.listClients = async (id) => {
+      calls += 1;
+      const rows = await original(id);
+      if (calls === 2) rows.push(client("late-client", "5517999992222"));
+      return rows;
+    };
+    await expect(runMigration({ ...config, gateway: db, apply: true }))
+      .rejects.toThrow("Clients changed during migration");
+    expect(db.changes.patch).toHaveLength(0);
+    expect(db.tenant.fields.slug).toBe(config.tenantSlug);
+  });
+
   it("does not finalize if another bank claims the slug between preflight and patch", async () => {
     const db = gateway();
     let calls = 0;
