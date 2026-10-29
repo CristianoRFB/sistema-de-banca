@@ -26,8 +26,6 @@ export function PublicShell() {
 
   useEffect(() => {
     let active = true;
-    setTenantState('loading');
-    setTenant(null);
     document.title = 'SaaS Banca';
     getTenantBootstrap()
       .then((value) => {
@@ -75,7 +73,7 @@ export function PublicShell() {
     return <div className="page-wrap empty-state" role="alert">
       <h1>Não foi possível abrir esta banca.</h1>
       <p>Confira o endereço ou a conexão. Nenhuma informação de outra banca será exibida.</p>
-      <button className="button button--secondary" type="button" onClick={() => setAttempt((value) => value + 1)}>Tentar novamente</button>
+      <button className="button button--secondary" type="button" onClick={() => { setTenant(null); setTenantState('loading'); setAttempt((value) => value + 1); }}>Tentar novamente</button>
     </div>;
   }
 
