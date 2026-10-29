@@ -39,3 +39,20 @@ Passar no emulador **não valida automaticamente produção**. Ainda são necess
 - inspeção visual, mobile e screenshots reais.
 
 Não declarar `READY_FOR_GLOBAL_STANDARD_IMPLEMENTATION` sem completar o readiness gate operacional. Entitlements continuam NEXT.
+
+## Browser smoke e screenshots da interface com fixtures
+
+O job `browser-smoke` (GitHub Actions) executa React/Vite em Chromium e intercepta **somente** os endpoints `/api/t/{slug}/...` para prover dados sintéticos de duas bancas. O teste verifica troca de tenant sem recarregar, branding, contatos, home, catálogo, localização, produto, viewports desktop/mobile e resposta segura a tenant inexistente.
+
+O Playwright está fixado em `@playwright/test@1.64.1` (Ubuntu 26.04). Para testar localmente:
+
+```sh
+npm ci
+npm install --no-save --package-lock=false @playwright/test@1.64.1
+npx playwright install --with-deps chromium
+npx playwright test --config=playwright.config.mjs
+```
+
+As capturas são geradas em `test-results/browser-screenshots/` e armazenadas pelo CI no artefato `banca-browser-ui-fixtures` com retenção de 14 dias. **Imagens geradas conceituais**, **diagramas técnicos** e **screenshots de interface executada** são categorias distintas: estes são screenshots do frontend em execução usando API fictícia, não mockups gerados nem evidência de backend real. Não cadastrar imagens inexistentes nos manifestos do repositório.
+
+O job não provisiona Firebase Auth nem controla sessão administrativa real. Fluxos administrativos integrados, Worker real/staging e QA visual em produção continuam pendentes.
