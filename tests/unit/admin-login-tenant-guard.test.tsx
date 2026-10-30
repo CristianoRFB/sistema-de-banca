@@ -26,11 +26,18 @@ beforeEach(() => mocks.bootstrap.mockReset());
 afterEach(() => cleanup());
 
 describe('tenant-bound admin login', () => {
-  it('does not present a credentials form while tenant identity is still unverified', () => {
-    mocks.bootstrap.mockImplementation(() => new Promise(() => undefined));
+  it('does not present a credentials form while tenant identity is still unverified', async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.bootstrap.mockImplementation(() => new Promise((done) => { resolve = done; }));
     renderLogin();
     expect(screen.getByRole('status')).toHaveTextContent('Confirmando a banca antes do login');
     expect(screen.queryByLabelText('Senha')).not.toBeInTheDocument();
+    resolve({
+      id: 'tenant-a', slug: 'banca-a', active: true, name: 'Banca A',
+      address: null, phone: null, photoUrl: null,
+      branding: { primaryColor: null, accentColor: null, backgroundColor: null, textColor: null, logoUrl: null, tagline: null },
+    });
+    expect(await screen.findByLabelText('Senha')).toBeInTheDocument();
   });
 
   it('fails closed when the tenant cannot be loaded', async () => {
