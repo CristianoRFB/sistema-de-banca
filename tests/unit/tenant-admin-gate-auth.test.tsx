@@ -66,6 +66,19 @@ describe('admin tenant authorization gate', () => {
     });
   });
 
+  it('refuses invalid public tenant slugs without making a backend request', async () => {
+    render(<MemoryRouter initialEntries={['/@invalid']}><AppRoutes /></MemoryRouter>);
+    expect(screen.getByRole('alert')).toHaveTextContent('Endereço de banca inválido.');
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
+  });
+
+  it('refuses invalid admin tenant slugs before checking membership', async () => {
+    render(<MemoryRouter initialEntries={['/@invalid/painel']}><AppRoutes /></MemoryRouter>);
+    expect(screen.getByRole('alert')).toHaveTextContent('Endereço de banca inválido.');
+    expect(screen.queryByTestId('private-admin-panel')).not.toBeInTheDocument();
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
+  });
+
   it('does not display tenant panel before a user session is verified', async () => {
     mocks.apiRequest.mockRejectedValue(new Error('forbidden'));
     render(
