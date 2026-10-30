@@ -1,14 +1,17 @@
 import { ArrowUpRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Badge } from '../../../components/ui/Badge';
 import type { ProdutoCatalogo } from '../catalogo.types';
+import { normalizeTenantSlug, tenantPath } from '../../../app/tenant';
 
 const palettes = ['card--ink', 'card--lime', 'card--orange', 'card--cream'];
 
 export function ProdutoCardTipografico({ produto, index = 0 }: { produto: ProdutoCatalogo; index?: number }) {
+  const { tenantSlug } = useParams();
+  const slug = normalizeTenantSlug(tenantSlug);
   const palette = palettes[index % palettes.length];
   return (
-    <Link className={`product-card ${palette}`} to={`/produto/${encodeURIComponent(produto.itemReparteId)}`}>
+    <Link className={`product-card ${palette}`} to={tenantPath(slug, `produto/${encodeURIComponent(produto.itemReparteId)}`)}>
       <div className="product-card__topline">
         <span className="eyebrow">{produto.tipo}</span>
         <ArrowUpRight size={18} aria-hidden="true" />

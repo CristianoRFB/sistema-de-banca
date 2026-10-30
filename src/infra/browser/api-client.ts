@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../../app/config';
+import { currentTenantSlug } from '../../app/tenant';
 
 let cachedPublicDataFallback = false;
 const cacheFallbackListeners = new Set<() => void>();
@@ -41,9 +42,13 @@ function hasApiError(payload: unknown): payload is ApiErrorEnvelope {
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const requestUrl = `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const tenantScopedPath = /^\/(?:public|client|admin)(?:\/|$)/.test(normalizedPath)
+    ? `/t/${encodeURIComponent(currentTenantSlug())}${normalizedPath}`
+    : normalizedPath;
+  const requestUrl = `${apiBaseUrl}${tenantScopedPath}`;
   const method = (init.method ?? 'GET').toUpperCase();
-  const isPublicCatalogRead = method === 'GET' && /^\/api\/public\/(?:banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(new URL(requestUrl, window.location.origin).pathname);
+  const isPublicCatalogRead = method === 'GET' && /^\/api\/t\/[a-z0-9-]+\/public\/(?:tenant|banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(new URL(requestUrl, window.location.origin).pathname);
   const response = await fetch(requestUrl, {
     ...init,
     headers,

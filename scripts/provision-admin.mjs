@@ -11,7 +11,7 @@ const role = process.env.ADMIN_ROLE?.trim() || 'ADMIN';
 if (!projectId || !/^[A-Za-z0-9-]+$/.test(projectId)) throw new Error('Set FIREBASE_PROJECT_ID to the intended Firebase project ID.');
 if (!bankId || !/^[A-Za-z0-9_-]{1,128}$/.test(bankId)) throw new Error('Set BANCA_ID to the existing banca document ID.');
 if (!uid || !/^[A-Za-z0-9_-]{1,128}$/.test(uid)) throw new Error('Set ADMIN_UID to the authenticated Firebase Auth user UID.');
-if (role !== 'ADMIN' && role !== 'OPERADOR') throw new Error('ADMIN_ROLE must be ADMIN or OPERADOR.');
+if (!['ADMIN', 'OPERADOR', 'TENANT_OWNER', 'STAFF'].includes(role)) throw new Error('ADMIN_ROLE must be ADMIN, OPERADOR, TENANT_OWNER or STAFF.');
 
 const tokenResult = spawnSync('gcloud', ['auth', 'application-default', 'print-access-token'], {
   encoding: 'utf8',

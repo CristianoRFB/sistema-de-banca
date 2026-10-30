@@ -1,0 +1,13 @@
+flowchart TB
+  Request[Request / URL] --> Resolver[Tenant Resolver]
+  Resolver -->|slug| Banks[(bancas)]
+  Banks --> Context[TenantContext]
+  Context --> Public[Public API]
+  Context --> Client[Client API]
+  Context --> Admin[Tenant Admin API]
+  Platform[Platform API] --> Owners[(platformOwners)]
+  Public --> Data[(Tenant-scoped Firestore)]
+  Client --> Data
+  Admin --> Data
+  Cron[Scheduled Worker] --> Active[List active tenants]
+  Active --> Data

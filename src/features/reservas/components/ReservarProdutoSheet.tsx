@@ -13,6 +13,7 @@ import { reservaRepository } from '../reserva.repository';
 import { obterPerfilPublicoBanca } from '../../banca/banca.service';
 import { validarDataRetirada } from '../../../domain/rules/validarDataRetirada';
 import type { HorarioFuncionamento } from '../../../domain/entities/HorarioFuncionamento';
+import { currentTenantSlug, tenantPath } from '../../../app/tenant';
 
 const PROFILE_CONFIRMATION_ERROR = 'Não foi possível confirmar o perfil. Revise nome e telefone ou fale com a banca.';
 
@@ -154,7 +155,7 @@ export function ReservarProdutoSheet({ produto, open, onClose }: { produto: Prod
       });
       toast('Reserva criada. Você pode acompanhar o prazo em Minhas reservas.');
       onClose();
-      navigate('/cliente/reservas');
+      navigate(tenantPath(currentTenantSlug(), 'cliente/reservas'));
     } catch (cause) {
       setStep('reservation');
       setError(cause instanceof Error ? cause.message : 'A reserva não foi confirmada. A disponibilidade pode ter mudado; atualize o catálogo e tente de novo.');

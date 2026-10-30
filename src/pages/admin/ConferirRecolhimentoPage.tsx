@@ -6,6 +6,7 @@ import { useAdminAuth } from '../../app/providers';
 import { adminRepository, type ReconciliationAdmin } from '../../features/admin/admin.repository';
 import { useToast } from '../../components/ui/Toast';
 import { AdminLoadError, AdminLoading } from './AdminCommon';
+import { currentTenantSlug, tenantPanelPath } from '../../app/tenant';
 
 const reasons = [
   { value: 'VENDA_NAO_REGISTRADA', label: 'Venda não registrada' },
@@ -68,12 +69,12 @@ export function ConferirRecolhimentoPage() {
   }
 
   if (loading) return <div className="admin-page"><AdminLoading label="Abrindo a conferência do lote…" /></div>;
-  if (failed || !data) return <div className="admin-page"><Link className="back-link" to="/admin/recolhimentos"><ArrowLeft size={17} /> Recolhimentos</Link><AdminLoadError onRetry={() => { setLoading(true); setFailed(false); void load(); }} /></div>;
+  if (failed || !data) return <div className="admin-page"><Link className="back-link" to={tenantPanelPath(currentTenantSlug(), 'recolhimentos')}><ArrowLeft size={17} /> Recolhimentos</Link><AdminLoadError onRetry={() => { setLoading(true); setFailed(false); void load(); }} /></div>;
   const differenceCount = data.items.filter((item) => counts[item.itemReparteId] !== '' && Number(counts[item.itemReparteId]) !== item.quantityExpected).length;
   const uncountedCount = data.items.filter((item) => counts[item.itemReparteId] === '').length;
 
   return <div className="admin-page">
-    <Link className="back-link" to="/admin/recolhimentos"><ArrowLeft size={17} /> Recolhimentos</Link>
+    <Link className="back-link" to={tenantPanelPath(currentTenantSlug(), 'recolhimentos')}><ArrowLeft size={17} /> Recolhimentos</Link>
     <header className="admin-page-heading admin-page-heading--stack"><div><span className="eyebrow">CONFERÊNCIA FÍSICA / {reparteId.slice(0, 8).toUpperCase()}</span><h1>{data.reparte.title}</h1><p>O saldo esperado orienta a contagem. A quantidade encontrada representa a realidade da banca.</p></div></header>
     <div className="reconciliation-note"><AlertTriangle size={18} /><span>{data.collection?.status === 'COM_DIVERGENCIA' ? 'Este lote tem saldo pendente. Conte o saldo que ainda falta conferir; use zero se nada mais estiver na banca e escolha manter pendente ou o motivo que encerra a diferença.' : 'Se a contagem divergir, registre o número encontrado e escolha um motivo. O sistema manterá o histórico antes e depois.'}</span></div>
     <div className="reconciliation-list">{data.items.map((item) => {

@@ -11,6 +11,7 @@ import type { ImportDraft, ImportedListRow } from '../../features/importacao/imp
 import type { ExportableList } from '../../features/exportacao/exportacao.types';
 import { adminRepository } from '../../features/admin/admin.repository';
 import { attachSavedItemIdentities, hasCompleteSavedItemIdentities, toAdminListItemInput } from '../../features/listas/lista.mappers';
+import { currentTenantSlug, tenantPanelPath } from '../../app/tenant';
 
 interface SavedDraft { listaId?: string; title: string; draft: ImportDraft }
 const STORAGE_KEY = 'banca-admin-list-draft:v1';
@@ -131,7 +132,7 @@ export function NovaListaPage() {
   }
 
   return <div className="admin-page">
-    <Link className="back-link" to="/admin/listas"><ArrowLeft size={17} /> Voltar às listas</Link>
+    <Link className="back-link" to={tenantPanelPath(currentTenantSlug(), 'listas')}><ArrowLeft size={17} /> Voltar às listas</Link>
     <header className="admin-page-heading admin-page-heading--stack"><div><span className="eyebrow">03 · NOVA LISTA / RASCUNHO</span><h1>Da chegada<br />à <em>prateleira.</em></h1><p>Importe, revise cada linha e só publique quando estiver conferido.</p></div></header>
     <div className="list-editor-title"><label className="field-label">Nome da lista<Input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} /></label><div className="autosave-status">{hydratingIds ? <><Cloud size={15} /> Sincronizando itens…</> : saving ? <><Cloud size={15} /> Salvando…</> : lastSaved ? <><Check size={15} /> Salvo às {lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</> : <><Save size={15} /> Rascunho neste dispositivo</>}</div></div>
     {!draft && <section className="import-panel"><div className="step-label"><span>01</span><div><span className="eyebrow">ORIGEM DA LISTA</span><p>O arquivo será lido neste aparelho e descartado depois da importação.</p></div></div><ImportarArquivo onDraftReady={acceptDraft} /></section>}
@@ -139,7 +140,7 @@ export function NovaListaPage() {
       <section className="review-panel"><div className="review-panel__heading"><div className="step-label"><span>02</span><div><span className="eyebrow">REVISE ANTES DE PUBLICAR</span><p>{draft.rows.length} linhas · {draft.sourceName ?? 'entrada manual'} · {draft.warnings.length} avisos</p></div></div><Button variant="secondary" size="small" onClick={() => setShowPreview((value) => !value)}><Eye size={16} /> {showPreview ? 'Fechar prévia' : 'Ver como cliente'}</Button></div>
         {draft.warnings.length > 0 && <div className="review-warning" role="status">{draft.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
         {showPreview ? <div className="customer-preview"><span className="eyebrow">PRÉVIA DO CATÁLOGO</span><h2>{title}</h2><div className="preview-products">{draft.rows.map((row) => <div className="preview-product" key={row.id}><span>読</span><strong>{row.title}</strong><small>{row.volume ? `Vol. ${row.volume}` : 'Volume não informado'}</small></div>)}</div></div> : <TabelaRevisao rows={draft.rows} onChange={updateRows} disabled={hydratingIds || identitySyncFailed} />}
-        <div className="review-actions"><span>{hydratingIds ? 'Sincronizando os itens já salvos…' : identitySyncFailed ? 'Abra a lista salva para continuar com segurança.' : `${draft.rows.filter((row) => row.requiresReview || row.issues.length).length} linhas ainda pedem conferência`}</span><div><Button variant="secondary" onClick={() => void saveDraft()} disabled={saving || hydratingIds || identitySyncFailed || !title.trim()}><Save size={16} /> Salvar rascunho</Button><Button onClick={() => { if (listaId) navigate(`/admin/listas/${listaId}`); else void saveDraft(); }} disabled={saving || hydratingIds || !listaId}><ArrowRight size={16} /> Continuar revisão</Button></div></div>
+        <div className="review-actions"><span>{hydratingIds ? 'Sincronizando os itens já salvos…' : identitySyncFailed ? 'Abra a lista salva para continuar com segurança.' : `${draft.rows.filter((row) => row.requiresReview || row.issues.length).length} linhas ainda pedem conferência`}</span><div><Button variant="secondary" onClick={() => void saveDraft()} disabled={saving || hydratingIds || identitySyncFailed || !title.trim()}><Save size={16} /> Salvar rascunho</Button><Button onClick={() => { if (listaId) navigate(tenantPanelPath(currentTenantSlug(), `listas/${listaId}`)); else void saveDraft(); }} disabled={saving || hydratingIds || !listaId}><ArrowRight size={16} /> Continuar revisão</Button></div></div>
       </section>
       <div className="export-panel"><ExportarLista list={exportable} /></div>
     </>}

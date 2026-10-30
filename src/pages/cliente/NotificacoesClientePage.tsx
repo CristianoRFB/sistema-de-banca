@@ -7,6 +7,7 @@ import { lerSessaoCliente } from '../../infra/local-storage/cliente-session';
 import { notificacaoRepository } from '../../features/notificacoes/notificacao.repository';
 import type { NotificacaoCliente } from '../../features/notificacoes/notificacao.types';
 import { BuscarPerfil } from '../../features/cliente/components/BuscarPerfil';
+import { currentTenantSlug, tenantPath } from '../../app/tenant';
 
 export function NotificacoesClientePage() {
   const [session, setSession] = useState(() => lerSessaoCliente());
@@ -59,7 +60,7 @@ export function NotificacoesClientePage() {
         : loading ? <div className="loading-block"><LoaderCircle className="spin" size={18} /> Carregando avisos…</div>
           : unavailable ? <div className="empty-state"><h2>Caixa de entrada indisponível.</h2><p>Tente novamente quando sua conexão estiver estável.</p><Button variant="secondary" onClick={() => window.location.reload()}>Tentar de novo</Button></div>
             : items.length ? <><div className="notification-list">{items.map((item) => <article className={`notification-card${item.lida ? '' : ' is-unread'}`} key={item.id}><span className="notification-mark"><Bell size={17} /></span><div><span className="eyebrow">{item.tipo.replaceAll('_', ' ')}</span><h2>{item.titulo}</h2><p>{item.mensagem}</p><time dateTime={item.criadaEm}>{new Date(item.criadaEm).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' })}</time>{!item.lida && <button className="text-button notification-mark-read" type="button" disabled={markingId !== null} onClick={() => void markRead(item)}>{markingId === item.id ? 'Salvando…' : 'Marcar como lida'}</button>}</div>{item.lida && <Check className="notification-read" size={17} aria-label="Lida" />}</article>)}</div>{nextCursor && <div className="history-load-more"><Button variant="secondary" disabled={loadingMore} onClick={() => void load(nextCursor)}>{loadingMore ? 'Carregando…' : moreUnavailable ? 'Tentar carregar novamente' : 'Carregar mais avisos'}</Button></div>}</>
-              : <div className="empty-state"><Bell size={24} /><span className="eyebrow">SEM NOTIFICAÇÕES</span><h2>Nenhum recado por enquanto.</h2><p>Se surgir uma novidade sobre sua reserva, ela aparece aqui.</p><Link className="button button--dark" to="/cliente/reservas">Ver minhas reservas</Link></div>}
+              : <div className="empty-state"><Bell size={24} /><span className="eyebrow">SEM NOTIFICAÇÕES</span><h2>Nenhum recado por enquanto.</h2><p>Se surgir uma novidade sobre sua reserva, ela aparece aqui.</p><Link className="button button--dark" to={tenantPath(currentTenantSlug(), 'cliente/reservas')}>Ver minhas reservas</Link></div>}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
+import { useTenantPublic } from '../../app/tenant-public-context';
+import { DEFAULT_TENANT_SLUG } from '../../app/tenant';
 import { Input } from '../../components/ui/Input';
 import { ProdutoCardTipografico } from '../../features/catalogo/components/ProdutoCardTipografico';
 import { catalogoRepository } from '../../features/catalogo/catalogo.repository';
@@ -14,6 +16,7 @@ const types: Array<{ label: string; value: FiltrosCatalogo['tipo'] }> = [
 ];
 
 export function CatalogoPage() {
+  const tenant = useTenantPublic();
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get('q') ?? '');
   const [type, setType] = useState<FiltrosCatalogo['tipo']>('TODOS');
@@ -51,7 +54,7 @@ export function CatalogoPage() {
         setHasMore(page.temMais);
         setDemo(false);
       }).catch(async () => {
-        if (import.meta.env.DEV && active) {
+        if (import.meta.env.DEV && tenant?.slug === DEFAULT_TENANT_SLUG && active) {
           const { demoCatalogo } = await import('../../features/catalogo/demoCatalogo');
           if (!active) return;
           setItems(demoCatalogo);
@@ -104,7 +107,7 @@ export function CatalogoPage() {
 
   return (
     <div className="catalog-page page-wrap">
-      <div className="page-kicker"><span className="eyebrow">ARQUIVO ABERTO · BANCA ANA MARIA</span><span className="page-count">CAT. / 001</span></div>
+      <div className="page-kicker"><span className="eyebrow">ARQUIVO ABERTO · {tenant?.name.toLocaleUpperCase('pt-BR') ?? 'BANCA'}</span><span className="page-count">CAT. / 001</span></div>
       <header className="catalog-heading"><h1>Encontre sua<br /><em>próxima leitura.</em></h1><p>Busque por título, volume ou editora. Sem pressa: as boas histórias ficam.</p></header>
       {demo && <div className="demo-ribbon"><span>Prévia de desenvolvimento</span> As sugestões abaixo são apenas amostras; não possuem estoque nem preço publicado.</div>}
       <div className="catalog-toolbar">

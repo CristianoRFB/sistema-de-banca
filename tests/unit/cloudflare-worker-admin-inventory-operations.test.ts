@@ -53,6 +53,7 @@ function context(db: MemoryDb, path: string, body: unknown, key: string): Reques
     env,
     db: db as unknown as RequestContext['db'],
     corsOrigin: null,
+    tenant: { id: "test-bank", slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false },
   };
 }
 

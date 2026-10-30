@@ -13,9 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/banca-mark.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-icon.png'],
       manifest: {
-        name: 'Banca Ana Maria',
-        short_name: 'Ana Maria',
-        description: 'Catálogo e reservas da Banca Ana Maria, em Santa Fé do Sul.',
+        name: 'SaaS Banca',
+        short_name: 'Banca',
+        description: 'Catálogo, reservas e operação de bancas em uma plataforma multi-tenant.',
         start_url: '/',
         scope: '/',
         display: 'standalone',
@@ -50,10 +50,10 @@ export default defineConfig({
             urlPattern: ({ url, request }) =>
               request.method === 'GET' &&
               url.origin === self.location.origin &&
-              /^\/api\/public\/(?:banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(url.pathname),
+              /^\/api\/t\/[a-z0-9-]+\/public\/(?:tenant|banca|catalog(?:\/[A-Za-z0-9_-]+)?)$/.test(url.pathname),
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'public-read-api-v1',
+              cacheName: 'tenant-public-read-api-v2',
               networkTimeoutSeconds: 3,
               expiration: { maxEntries: 120, maxAgeSeconds: 900 },
               cacheableResponse: { statuses: [200] },

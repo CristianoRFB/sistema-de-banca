@@ -214,7 +214,7 @@ export class FirestoreRest {
   private readonly baseUrl: string;
 
   constructor(private readonly env: Bindings) {
-    if (!env.FIREBASE_PROJECT_ID || !env.BANCA_ID || !env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       throw new HttpError({ code: "configuration_error", message: "Firestore Worker configuration is incomplete.", status: 500 });
     }
     this.baseUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents`;

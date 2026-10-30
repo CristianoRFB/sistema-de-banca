@@ -27,7 +27,7 @@ function scalar(value: JsonObject | undefined): unknown {
 class CatalogFirestore {
   private readonly documents = new Map<string, FirestoreDocument>();
 
-  constructor(count = 60) {
+  constructor(count = 60, tenantId = bankId) {
     for (let number = 1; number <= count; number += 1) {
       const suffix = String(number).padStart(3, '0');
       const rowId = `row-${suffix}`;
@@ -39,7 +39,7 @@ class CatalogFirestore {
       const available = number === 60 ? 2 : 8;
       const publishedAt = new Date(Date.UTC(2026, 8, number)).toISOString();
       this.documents.set(`itensLista/${rowId}`, doc(`itensLista/${rowId}`, {
-        bancaId: bankId,
+        bancaId: tenantId,
         listaId: listId,
         itemReparteId: stockId,
         produtoId: productId,
@@ -49,9 +49,9 @@ class CatalogFirestore {
         ativo: true,
         availabilityClass: available <= 3 ? 'LOW' : 'AVAILABLE',
       }));
-      this.documents.set(`listas/${listId}`, doc(`listas/${listId}`, { bancaId: bankId, status: 'PUBLICADA', publicadaEm: publishedAt }));
+      this.documents.set(`listas/${listId}`, doc(`listas/${listId}`, { bancaId: tenantId, status: 'PUBLICADA', publicadaEm: publishedAt }));
       this.documents.set(`itensReparte/${stockId}`, doc(`itensReparte/${stockId}`, {
-        bancaId: bankId,
+        bancaId: tenantId,
         reparteId,
         produtoId: productId,
         status: 'DISPONIVEL',
@@ -67,8 +67,14 @@ class CatalogFirestore {
         editora: number === 40 ? 'Editora Especial' : 'Editora Exemplo',
         ativo: true,
       }));
-      this.documents.set(`repartes/${reparteId}`, doc(`repartes/${reparteId}`, { bancaId: bankId, status: 'ATIVO' }));
+      this.documents.set(`repartes/${reparteId}`, doc(`repartes/${reparteId}`, { bancaId: tenantId, status: 'ATIVO' }));
     }
+  }
+
+  setReparteTenant(reparteId: string, tenantId: string): void {
+    const record = this.documents.get(`repartes/${reparteId}`);
+    if (!record) throw new Error("Reparte fixture was not found");
+    record.data.bancaId = tenantId;
   }
 
   async query(_collection: string, structuredQuery: JsonObject): Promise<FirestoreDocument[]> {
@@ -140,14 +146,15 @@ const env: Bindings = {
   CLIENT_RATE_LIMITER: { limit: async ({ key }) => { rateLimitCalls.push(key); return { success: true }; } },
 };
 
-async function requestCatalog(db: CatalogFirestore, query: string): Promise<{ items: JsonObject[]; page: { limit: number; nextCursor: string | null; hasMore: boolean }; cacheControl: string | null }> {
+async function requestCatalog(db: CatalogFirestore, query: string, tenantId = bankId): Promise<{ items: JsonObject[]; page: { limit: number; nextCursor: string | null; hasMore: boolean }; cacheControl: string | null }> {
   const request = new Request(`https://banca.example.test/api/public/catalog?${query}`);
   const context: RequestContext = {
     request,
     url: new URL(request.url),
-    env,
+    env: { ...env, BANCA_ID: tenantId },
     db: db as unknown as FirestoreRest,
     corsOrigin: null,
+    tenant: { id: tenantId, slug: tenantId, name: "Test Banca", active: true, legacyFallback: false },
   };
   const response = await handlePublicRoute(context);
   if (!response) throw new Error('Expected the public catalog route to handle this request.');
@@ -201,6 +208,7 @@ describe('Cloudflare Worker public catalog', () => {
       env,
       db: new CatalogFirestore() as unknown as FirestoreRest,
       corsOrigin: null,
+    tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false },
     };
 
     const response = await handlePublicRoute(context);
@@ -223,8 +231,33 @@ describe('Cloudflare Worker public catalog', () => {
       env,
       db: new CatalogFirestore() as unknown as FirestoreRest,
       corsOrigin: null,
+      tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false },
     });
 
     expect(response?.headers.get('cache-control')).toBe('no-store');
   });
+  it('rejects a signed catalog cursor from Tenant A when presented in Tenant B', async () => {
+    const tenantA = await requestCatalog(new CatalogFirestore(4, 'tenant-a'), 'limit=1', 'tenant-a');
+    expect(tenantA.page.nextCursor).toBeTruthy();
+
+    const params = new URLSearchParams({ limit: '1', cursor: tenantA.page.nextCursor! });
+    await expect(requestCatalog(new CatalogFirestore(4, 'tenant-b'), params.toString(), 'tenant-b'))
+      .rejects.toMatchObject({ code: 'invalid_cursor', status: 400 });
+
+    const tenantB = await requestCatalog(new CatalogFirestore(4, 'tenant-b'), 'limit=1', 'tenant-b');
+    expect(tenantB.items).toHaveLength(1);
+    expect(tenantB.page.nextCursor).toBeTruthy();
+    const nextB = await requestCatalog(new CatalogFirestore(4, 'tenant-b'),
+      new URLSearchParams({ limit: '1', cursor: tenantB.page.nextCursor! }).toString(), 'tenant-b');
+    expect(nextB.items).toHaveLength(1);
+    expect(nextB.items[0].itemReparteId).not.toBe(tenantB.items[0].itemReparteId);
+  });
+
+  it('does not expose a published catalog listing referencing another tenant’s reparte', async () => {
+    const db = new CatalogFirestore(1);
+    db.setReparteTenant('reparte-001', 'tenant-b');
+    const result = await requestCatalog(db, 'limit=5');
+    expect(result.items).toEqual([]);
+  });
+
 });

@@ -3,11 +3,13 @@
 Este repositório é um projeto novo e o agente tem ampla autonomia para implementar, refatorar, testar, auditar e organizar o sistema. A autonomia NÃO autoriza ignorar a documentação estrutural.
 
 ## Leitura obrigatória antes de alterar código
-1. Leia integralmente `docs/estrutura-original/`.
-2. Analise TODOS os diagramas em `docs/diagramas/`.
-3. Leia `docs/CONTEXTO_ATUAL.md`, `docs/DECISOES.md` e `docs/PENDENCIAS.md`.
-4. Inspecione o repositório e compare o estado real com a documentação.
+1. Leia `docs/CURRENT.md` e siga a versão canônica apontada por ele.
+2. Leia `docs/DECISOES.md` e `docs/PENDENCIAS.md` para histórico/bloqueios ainda relevantes.
+3. Consulte `docs/estrutura-original/` e `docs/diagramas/` somente como histórico quando conflitarem com a versão CURRENT.
+4. Inspecione o repositório e compare o estado real com a documentação vigente.
 5. Preserve implementações corretas. Não reescreva por gosto pessoal.
+
+Antes de alterar tenants, auth, RBAC, rotas, white-label, segurança, Firebase ou deploy, `docs/CURRENT.md` é obrigatório.
 
 ## Regra de execução contínua
 - Objetivo: avançar o máximo possível rumo a um sistema completo e integrado.
@@ -54,3 +56,11 @@ Este repositório é um projeto novo e o agente tem ampla autonomia para impleme
 
 ## Subagentes
 As funções sugeridas estão em `agents/`. O agente principal deve delegar frentes independentes quando isso acelerar o trabalho, mas deve integrar e auditar as entregas antes de considerá-las concluídas.
+
+
+## Multi-tenancy vigente
+- `bancas/{bancaId}` representa o tenant desta vertical.
+- Produção deve resolver tenant por slug/request; `BANCA_ID` é somente compatibilidade legacy temporária.
+- `/admin` é Platform Owner; `/{tenantSlug}/painel` é administração local.
+- Segurança/isolamento nunca são entitlement Premium.
+- Não implementar PlanCatalog/EntitlementService antes do readiness do core multi-tenant.
