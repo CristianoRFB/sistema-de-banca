@@ -22,7 +22,7 @@ function renderLogin() {
   );
 }
 
-beforeEach(() => mocks.bootstrap.mockReset());
+beforeEach(() => { mocks.bootstrap.mockReset(); });
 afterEach(() => cleanup());
 
 describe('tenant-bound admin login', () => {
