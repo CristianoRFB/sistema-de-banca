@@ -6,9 +6,15 @@ export const DEFAULT_TENANT_SLUG = String(
 
 const LEGACY_FIRST_SEGMENTS = new Set(['admin', 'catalogo', 'produto', 'cliente', 'localizacao']);
 
-export function normalizeTenantSlug(value: string | undefined | null): string {
+/** Parse an explicit tenant identifier without silently falling back to Ana Maria. */
+export function parseTenantSlug(value: string | undefined | null): string | null {
   const normalized = String(value ?? '').trim().toLocaleLowerCase('pt-BR');
-  return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(normalized) ? normalized : DEFAULT_TENANT_SLUG;
+  return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(normalized) ? normalized : null;
+}
+
+/** Legacy helpers may still resolve an absent slug to the configured default. */
+export function normalizeTenantSlug(value: string | undefined | null): string {
+  return parseTenantSlug(value) ?? DEFAULT_TENANT_SLUG;
 }
 
 export function tenantSlugFromPathname(pathname: string): string {
