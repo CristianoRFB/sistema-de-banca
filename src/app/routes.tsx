@@ -44,26 +44,27 @@ function TenantAdminGate() {
   const { user, loading } = useAdminAuth();
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
-  const [verified, setVerified] = useState<{ slug: string; allowed: boolean; supportExpiresAt: string | null } | null>(null);
+  const [verified, setVerified] = useState<{ slug: string; uid: string; allowed: boolean; supportExpiresAt: string | null } | null>(null);
 
   useEffect(() => {
     if (!user) return;
     let active = true;
+    const uid = user.uid;
     user.getIdToken()
       .then((token) => apiRequest<{ session: { platformOverride: boolean; supportExpiresAt: string | null } }>(
         '/admin/session', { headers: { Authorization: `Bearer ${token}` } },
       ))
       .then((data) => { if (active) setVerified({
-        slug, allowed: true,
+        slug, uid, allowed: true,
         supportExpiresAt: data.session.platformOverride ? data.session.supportExpiresAt : null,
       }); })
-      .catch(() => { if (active) setVerified({ slug, allowed: false, supportExpiresAt: null }); });
+      .catch(() => { if (active) setVerified({ slug, uid, allowed: false, supportExpiresAt: null }); });
     return () => { active = false; };
   }, [user, slug]);
 
   if (loading) return <div className="loading-block">Validando acesso…</div>;
   if (!user) return <Navigate to={tenantPanelPath(slug, 'login')} replace />;
-  if (!verified || verified.slug !== slug) return <div className="loading-block">Confirmando acesso à banca…</div>;
+  if (!verified || verified.slug !== slug || verified.uid !== user.uid) return <div className="loading-block">Confirmando acesso à banca…</div>;
   if (!verified.allowed) {
     return <div className="page-wrap empty-state" role="alert">
       <span className="eyebrow">ACESSO NÃO AUTORIZADO</span>
