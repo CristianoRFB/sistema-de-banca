@@ -15,7 +15,7 @@ export function LoginAdminPage() {
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
   const panelPath = tenantPanelPath(slug);
-  const [tenant, setTenant] = useState<TenantBootstrap | null>(null);
+  const [tenantCheck, setTenantCheck] = useState<{ slug: string; tenant: TenantBootstrap | null } | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,11 +23,27 @@ export function LoginAdminPage() {
   useEffect(() => { if (user) navigate(panelPath, { replace: true }); }, [user, navigate, panelPath]);
   useEffect(() => {
     let active = true;
-    getTenantBootstrap().then((value) => { if (active) setTenant(value); }).catch(() => undefined);
+    getTenantBootstrap()
+      .then((value) => {
+        if (active) setTenantCheck({ slug, tenant: value.active && value.slug === slug ? value : null });
+      })
+      .catch(() => {
+        if (active) setTenantCheck({ slug, tenant: null });
+      });
     return () => { active = false; };
   }, [slug]);
-  const verifiedTenant = tenant?.slug === slug && tenant.active ? tenant : null;
+  const verifiedTenant = tenantCheck?.slug === slug ? tenantCheck.tenant : null;
   if (user) return <Navigate to={panelPath} replace />;
+  if (!tenantCheck || tenantCheck.slug !== slug) {
+    return <main className="page-wrap loading-block" role="status">Confirmando a banca antes do login…</main>;
+  }
+  if (!verifiedTenant) {
+    return <main className="page-wrap empty-state" role="alert">
+      <h1>Não foi possível verificar esta banca.</h1>
+      <p>Confira o endereço ou a conexão antes de informar suas credenciais.</p>
+      <Link className="button button--secondary" to={tenantPath(slug)}>Voltar ao site</Link>
+    </main>;
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); setLoading(true);
