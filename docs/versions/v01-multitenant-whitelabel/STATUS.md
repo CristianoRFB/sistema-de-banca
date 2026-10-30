@@ -25,6 +25,14 @@
 
 Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 
+## Incremento de segurança — 2026-10-30
+- Sessão persistente de cliente isolada por slug (chave v2); sair de uma banca não encerra a sessão de outra.
+- Migração de chave local v1 exclusivamente para Banca Ana Maria, preservando sessões legadas válidas sem expô-las em outro tenant.
+- TenantAdminGate compara UID autenticado com UID da verificação de membership; troca de conta nunca reaproveita um gate liberado anteriormente.
+- Slugs explícitos inválidos não herdam silenciosamente a Banca Ana Maria nas rotas públicas, login local e painel.
+- Novos testes unitários de isolamento de sessão, migração, troca de UID e slug inválido.
+- Os testes e builds desse incremento só contam como validados após CI verde no SHA correspondente, não pela mera publicação dos commits.
+
 ## Evidências automatizadas (sem acesso a dados reais)
 - testes de integração de autenticação Firebase assinada e isolamento A × B;
 - testes de slugs, permissões por tenant, suporte de leitura com expiração e negação de privilégios;
