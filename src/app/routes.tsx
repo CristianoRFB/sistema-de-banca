@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAdminAuth } from './providers';
-import { DEFAULT_TENANT_SLUG, normalizeTenantSlug, tenantPanelPath, tenantPath } from './tenant';
+import { DEFAULT_TENANT_SLUG, normalizeTenantSlug, parseTenantSlug, tenantPanelPath, tenantPath } from './tenant';
 import { PublicShell } from './layouts/PublicShell';
 import { apiRequest } from '../infra/browser/api-client';
 import { AdminShell } from './layouts/AdminShell';
@@ -36,8 +36,26 @@ const PlatformAdminPage = lazy(() => import('../pages/platform/PlatformAdminPage
  */
 function VerifiedPublicTenantBoundary() {
   const { tenantSlug } = useParams();
-  const slug = normalizeTenantSlug(tenantSlug);
-  return <PublicShell key={slug} />;
+  const slug = parseTenantSlug(tenantSlug);
+  return slug ? <PublicShell key={slug} /> : <InvalidTenantNotice />;
+}
+
+function InvalidTenantNotice() {
+  return <div className="page-wrap empty-state" role="alert">
+    <h1>Endereço de banca inválido.</h1>
+    <p>Confira o endereço da banca. Nenhuma sessão ou informação de outra banca foi carregada.</p>
+    <Link className="button button--secondary" to="/">Voltar ao início</Link>
+  </div>;
+}
+
+function ValidatedTenantLogin() {
+  const { tenantSlug } = useParams();
+  return parseTenantSlug(tenantSlug) ? <LoginAdminPage /> : <InvalidTenantNotice />;
+}
+
+function ValidatedTenantAdminGate() {
+  const { tenantSlug } = useParams();
+  return parseTenantSlug(tenantSlug) ? <TenantAdminGate /> : <InvalidTenantNotice />;
 }
 
 function TenantAdminGate() {
@@ -119,8 +137,8 @@ export function AppRoutes() {
         <Route path="*" element={<Navigate to="." replace />} />
       </Route>
 
-      <Route path="/:tenantSlug/painel/login" element={<LoginAdminPage />} />
-      <Route path="/:tenantSlug/painel" element={<TenantAdminGate />}>
+      <Route path="/:tenantSlug/painel/login" element={<ValidatedTenantLogin />} />
+      <Route path="/:tenantSlug/painel" element={<ValidatedTenantAdminGate />}>
         <Route index element={<DashboardPage />} />
         <Route path="listas" element={<ListasPage />} />
         <Route path="listas/nova" element={<NovaListaPage />} />
