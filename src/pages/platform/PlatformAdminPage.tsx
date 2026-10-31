@@ -121,7 +121,7 @@ export function PlatformAdminPage() {
   }
 
   async function loadMemberships(tenantId: string, cursor: string | null = null) {
-    if (!user || !tenantId || working) return;
+    if (!user || !tenantId) return;
     setWorking(true);
     setError('');
     if (!cursor) {
