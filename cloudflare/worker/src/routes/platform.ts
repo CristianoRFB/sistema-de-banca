@@ -55,17 +55,27 @@ async function createTenant(ctx: RequestContext, actor: PlatformIdentity): Promi
   const body = await readJsonBody(ctx.request, 12_000);
   const slug = validateTenantSlugForCreation(body.slug);
   const name = cleanName(body.name);
+  // An owner UID must be provided explicitly by the Platform Owner. Never
+  // infer privileges from an email address or the creator's own identity.
+  const initialOwnerUid = typeof body.initialOwnerUid === "string" ? body.initialOwnerUid.trim() : "";
+  if (!/^[A-Za-z0-9:_-]{3,128}$/.test(initialOwnerUid)) {
+    throw new HttpError({ code: "invalid_initial_owner_uid", message: "A valid Firebase Auth UID for the initial tenant owner is required.", status: 400 });
+  }
   const tenantId = typeof body.id === "string" && /^[A-Za-z0-9_-]{3,80}$/.test(body.id.trim())
     ? body.id.trim()
     : crypto.randomUUID();
   const now = new Date().toISOString();
 
   const tenant = await ctx.db.transact(async (transaction) => {
-    const [existingById, existingBySlug] = await Promise.all([
+    // The registry is a transaction-wide uniqueness guard for new tenants.
+    // Query the original bancas collection as well for pre-registry tenants.
+    const slugPath = `tenantSlugs/${slug}`;
+    const [existingById, existingBySlug, existingSlugLock] = await Promise.all([
       transaction.get(`bancas/${tenantId}`),
       transaction.query("bancas", query("bancas", [eq("slug", firestoreString(slug))], 2)),
+      transaction.get(slugPath),
     ]);
-    if (existingById || existingBySlug.length) {
+    if (existingById || existingBySlug.length || existingSlugLock) {
       throw new HttpError({ code: "tenant_conflict", message: "Tenant id or slug is already in use.", status: 409 });
     }
 
@@ -77,14 +87,27 @@ async function createTenant(ctx: RequestContext, actor: PlatformIdentity): Promi
       atualizadoEm: now,
       branding: typeof body.branding === "object" && body.branding !== null ? body.branding : {},
     };
+    transaction.set(slugPath, { tenantId, slug, criadoEm: now }, { mustNotExist: true });
     transaction.set(`bancas/${tenantId}`, data, { mustNotExist: true });
+    transaction.set(`bancas/${tenantId}/usuarios/${initialOwnerUid}`, {
+      papel: "TENANT_OWNER",
+      ativo: true,
+      criadoEm: now,
+      atualizadoEm: now,
+    }, { mustNotExist: true });
     audit(transaction, actor, {
       action: "TENANT_CREATED",
       tenantId,
       entityId: tenantId,
-      details: { slug, name },
+      details: { slug, name, initialOwnerUid },
     });
-    return { id: tenantId, ...data };
+    audit(transaction, actor, {
+      action: "MEMBERSHIP_CREATED",
+      tenantId,
+      entityId: initialOwnerUid,
+      details: { role: "TENANT_OWNER", active: true, source: "TENANT_CREATION" },
+    });
+    return { id: tenantId, ...data, initialOwnerUid };
   });
 
   return jsonResponse(ctx, { tenant }, 201);
