@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ExternalLink, LogOut, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../app/providers';
@@ -40,6 +40,8 @@ export function PlatformAdminPage() {
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [loadingMemberships, setLoadingMemberships] = useState(false);
+  const membershipRequestVersion = useRef(0);
   const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -125,12 +127,14 @@ export function PlatformAdminPage() {
   }
 
   async function loadMemberships(tenantId: string, cursor: string | null = null) {
-    if (!user || !tenantId) return;
-    setWorking(true);
+    if (!user || !tenantId || (cursor && tenantId !== selectedTenantId)) return;
+    // Each fresh tenant selection invalidates all older membership/support
+    // responses. A slow response for tenant A can never overwrite tenant B.
+    const version = cursor ? membershipRequestVersion.current : ++membershipRequestVersion.current;
+    const isCurrent = () => membershipRequestVersion.current === version;
+    setLoadingMemberships(true);
     setError('');
     if (!cursor) {
-      // Clear the previous bank immediately; a failed request must never leave
-      // membership actions for a different bank on screen.
       setSelectedTenantId(tenantId);
       setMemberships([]);
       setMembershipNextCursor(null);
@@ -138,11 +142,13 @@ export function PlatformAdminPage() {
     }
     try {
       const token = await user.getIdToken();
+      if (!isCurrent()) return;
       const params = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
       const result = await apiRequest<{ memberships: PlatformMembership[]; page?: { nextCursor: string | null } }>(
         `/platform/tenants/${encodeURIComponent(tenantId)}/memberships${params}`,
         { headers: authHeaders(token) },
       );
+      if (!isCurrent()) return;
       setMemberships((current) => cursor ? [...current, ...result.memberships] : result.memberships);
       setMembershipNextCursor(result.page?.nextCursor ?? null);
       if (!cursor) {
@@ -150,12 +156,13 @@ export function PlatformAdminPage() {
           `/platform/tenants/${encodeURIComponent(tenantId)}/support`,
           { headers: authHeaders(token) },
         );
+        if (!isCurrent()) return;
         setSupportGrant(supportResult.grant);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os acessos.');
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os acessos.');
     } finally {
-      setWorking(false);
+      if (isCurrent()) setLoadingMemberships(false);
     }
   }
 
@@ -318,6 +325,7 @@ export function PlatformAdminPage() {
             <div><span className="eyebrow">MEMBERSHIPS</span><h2>Acessos do tenant</h2></div>
             <span>{memberships.length}</span>
           </div>
+          {loadingMemberships && <p role="status" className="muted-copy">Carregando acessos desta banca…</p>}
           <div className="form-stack">
             <div>
               <span className="eyebrow">SUPORTE TEMPORÁRIO</span>
@@ -338,10 +346,10 @@ export function PlatformAdminPage() {
               </select>
             </label>
             <div className="button-row">
-              <Button type="button" variant="secondary" disabled={working || supportReason.trim().length < 12}
+              <Button type="button" variant="secondary" disabled={working || loadingMemberships || supportReason.trim().length < 12}
                 onClick={() => void changeSupportStatus('grant')}>Conceder suporte somente leitura</Button>
               {supportGrant?.active && (
-                <Button type="button" variant="secondary" disabled={working}
+                <Button type="button" variant="secondary" disabled={working || loadingMemberships}
                   onClick={() => void changeSupportStatus('revoke')}>Revogar suporte</Button>
               )}
               {supportGrant?.active && selectedTenant && (
@@ -361,7 +369,7 @@ export function PlatformAdminPage() {
                 <option value="OPERADOR">Operador legado</option>
               </select>
             </label>
-            <Button disabled={working || !membershipUid.trim()}><Plus size={16} /> Salvar acesso</Button>
+            <Button disabled={working || loadingMemberships || !membershipUid.trim()}><Plus size={16} /> Salvar acesso</Button>
           </form>
           <div className="data-list">
             {memberships.map((membership) => (
@@ -370,18 +378,18 @@ export function PlatformAdminPage() {
                   <b>{membership.uid}</b>
                   <small>{membership.role ?? 'SEM PAPEL'} · {membership.active ? 'ATIVO' : 'INATIVO'}</small>
                 </div>
-                <Button type="button" variant="secondary" disabled={working || !membership.role}
+                <Button type="button" variant="secondary" disabled={working || loadingMemberships || !membership.role}
                   onClick={() => void changeMembershipStatus(membership)}
                   aria-label={`${membership.active ? 'Revogar' : 'Reativar'} acesso de ${membership.uid}`}>
                   {membership.active ? 'Revogar acesso' : 'Reativar acesso'}
                 </Button>
               </article>
             ))}
-            {!memberships.length && !working && !error && <p className="muted-copy">Nenhum acesso cadastrado neste tenant.</p>}
+            {!memberships.length && !loadingMemberships && !error && <p className="muted-copy">Nenhum acesso cadastrado neste tenant.</p>}
           </div>
           {membershipNextCursor && (
             <div className="button-row">
-              <Button type="button" variant="secondary" disabled={working}
+              <Button type="button" variant="secondary" disabled={working || loadingMemberships}
                 onClick={() => void loadMemberships(selectedTenantId, membershipNextCursor)}>
                 {working ? 'Carregando…' : 'Carregar mais acessos'}
               </Button>
