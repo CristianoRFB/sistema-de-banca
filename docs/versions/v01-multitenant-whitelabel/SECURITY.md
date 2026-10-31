@@ -10,6 +10,7 @@ Regras:
 - ID vindo do frontend não define tenant;
 - tenant é resolvido/validado pelo Worker;
 - membership local é validada server-side;
+- criação de nova banca exige UID explícito do Tenant Owner: vínculo local, reserva do slug e auditoria são gravados atomicamente; não há concessão automática por e-mail. O UID informado **não é verificado contra a existência da conta Firebase Auth** neste endpoint.
 - Platform Owner é validado em `platformOwners/{uid}`;
 - `platform_owner` NÃO obtém acesso automático às APIs operacionais da banca: requer membership local ativa OU concessão temporária e explícita de suporte;
 - modo de suporte é iniciado pelo Platform Owner em `/api/platform/tenants/{id}/support`, com justificativa (12–300 caracteres), duração limitada a 15/30/60 minutos e auditoria de concessão/revogação;
