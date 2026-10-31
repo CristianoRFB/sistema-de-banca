@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminShell } from '../../src/app/layouts/AdminShell';
@@ -35,7 +35,8 @@ describe('tenant admin shell branding boundary', () => {
       branding: { ...base.branding, primaryColor: '#ff0000' },
     });
     const { container } = mount();
-    await waitFor(() => expect(mocks.bootstrap).toHaveBeenCalledOnce());
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.bootstrap).toHaveBeenCalledOnce();
     expect(screen.queryByText('Banca B')).not.toBeInTheDocument();
     expect(container.querySelector('.admin-shell')?.getAttribute('style') ?? '').not.toContain('#ff0000');
   });
@@ -50,7 +51,8 @@ describe('tenant admin shell branding boundary', () => {
   it('does not display disabled tenant branding', async () => {
     mocks.bootstrap.mockResolvedValueOnce({ ...base, active: false });
     const { container } = mount();
-    await waitFor(() => expect(mocks.bootstrap).toHaveBeenCalledOnce());
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.bootstrap).toHaveBeenCalledOnce();
     expect(screen.queryByText('Banca A')).not.toBeInTheDocument();
     expect(container.querySelector('.admin-shell')?.getAttribute('style') ?? '').not.toContain('#112233');
   });
