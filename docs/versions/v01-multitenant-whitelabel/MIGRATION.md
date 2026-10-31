@@ -55,6 +55,9 @@ Se o PATCH final falhar por precondition, o slug permanece inalterado; os índic
 
 O script **não** provisiona `platform_owner`, não cria Tenant B de produção, não cria outras contas e não ativa billing.
 
+### Compatibilidade com o registro de slugs
+A API de criação de **novas** bancas mantém uma reserva exclusiva em `tenantSlugs/{slug}` e verifica também `bancas` para reconhecer tenants anteriores ao registro. O migrador legado da Banca Ana Maria **não usa nem depende** desse registro; não é necessário executá-lo apenas para criar a nova estrutura. O registro não substitui o documento canônico `bancas/{id}` nem autoriza acesso por si.
+
 ## Testes automatizados
 
 `tests/unit/multitenant-migration.test.mjs` usa gateway em memória (sem Google ADC e sem Firebase real) e cobre:
