@@ -43,6 +43,7 @@ export function PlatformAdminPage() {
   const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [initialOwnerUid, setInitialOwnerUid] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [memberships, setMemberships] = useState<PlatformMembership[]>([]);
   const [membershipNextCursor, setMembershipNextCursor] = useState<string | null>(null);
@@ -89,11 +90,12 @@ export function PlatformAdminPage() {
     try {
       const token = await user.getIdToken();
       await apiRequest('/platform/tenants', {
-        ...jsonBody({ name, slug }),
+        ...jsonBody({ name, slug, initialOwnerUid: initialOwnerUid.trim() }),
         headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
       });
       setName('');
       setSlug('');
+      setInitialOwnerUid('');
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível criar o tenant.');
@@ -269,7 +271,14 @@ export function PlatformAdminPage() {
         <form className="form-stack" onSubmit={(event) => void createTenant(event)}>
           <label className="field-label">Nome<Input value={name} onChange={(event) => setName(event.target.value)} required /></label>
           <label className="field-label">Slug<Input value={slug} onChange={(event) => setSlug(event.target.value.toLocaleLowerCase('pt-BR').replace(/[^a-z0-9-]/g, '-'))} required /></label>
-          <Button disabled={working || !name.trim() || !slug.trim()}><Plus size={16} /> Criar tenant</Button>
+          <label className="field-label">Firebase Auth UID do Tenant Owner
+            <Input value={initialOwnerUid} onChange={(event) => setInitialOwnerUid(event.target.value.trim())}
+              minLength={3} maxLength={128} required placeholder="UID de uma conta Firebase previamente provisionada" />
+          </label>
+          <p className="muted-copy">O UID deve pertencer a uma conta Firebase Auth já provisionada. A criação da banca e o primeiro acesso local serão gravados juntos; nenhum usuário vira proprietário pelo e-mail ou pelo login atual.</p>
+          <Button disabled={working || !name.trim() || !slug.trim() || !/^[A-Za-z0-9:_-]{3,128}$/.test(initialOwnerUid)}>
+            <Plus size={16} /> Criar tenant com proprietário
+          </Button>
         </form>
       </section>
 
