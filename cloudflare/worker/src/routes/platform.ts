@@ -1,4 +1,4 @@
-import { eq, firestoreString, jsonResponse, query, readJsonBody } from "../api";
+import { eq, firestoreDocName, firestoreString, jsonResponse, parseLimit, query, readJsonBody } from "../api";
 import { requirePlatformOwner } from "../security";
 import { listTenantDocuments, validateTenantSlugForCreation } from "../tenant";
 import { HttpError, type JsonObject, type PlatformIdentity, type RequestContext, type TenantRole } from "../types";
@@ -117,15 +117,34 @@ async function setTenantStatus(
 async function listMemberships(ctx: RequestContext, tenantId: string): Promise<Response> {
   const tenant = await ctx.db.get(`bancas/${tenantId}`);
   if (!tenant) throw new HttpError({ code: "tenant_not_found", message: "Tenant was not found.", status: 404 });
-  const rows = await ctx.db.query(`bancas/${tenantId}/usuarios`, query("usuarios", [], 200));
+
+  // Avoid silently hiding memberships after the first 200 records. Document-name
+  // cursors remain scoped to this tenant even if the caller supplies a cursor.
+  const limit = parseLimit(ctx.url.searchParams.get("limit"), 50, 100);
+  const cursor = ctx.url.searchParams.get("cursor");
+  if (cursor !== null && !/^[A-Za-z0-9:_-]{3,128}$/.test(cursor)) {
+    throw new HttpError({ code: "invalid_cursor", message: "Membership cursor is invalid.", status: 400 });
+  }
+  const startAt = cursor ? {
+    values: [{ referenceValue: firestoreDocName(ctx.env.FIREBASE_PROJECT_ID, `bancas/${tenantId}/usuarios/${cursor}`) }],
+    before: false,
+  } : undefined;
+  const rows = await ctx.db.query(`bancas/${tenantId}/usuarios`, query(
+    "usuarios", [], limit + 1,
+    [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }],
+    startAt,
+  ));
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
   return jsonResponse(ctx, {
-    memberships: rows.map((row) => ({
+    memberships: page.map((row) => ({
       uid: row.id,
       role: row.data.papel ?? null,
       active: row.data.ativo === true,
       createdAt: row.data.criadoEm ?? null,
       updatedAt: row.data.atualizadoEm ?? null,
     })),
+    page: { limit, hasMore, nextCursor: hasMore ? page.at(-1)?.id ?? null : null },
   });
 }
 
