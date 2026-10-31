@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlatformAdminPage } from '../../src/pages/platform/PlatformAdminPage';
@@ -194,9 +194,8 @@ describe('Platform Owner membership administration', () => {
     expect(buttons[1]).toBeEnabled();
     fireEvent.click(buttons[1]);
     await screen.findByText('only-in-b');
-    await act(async () => {
-      finishA({ memberships: [{ uid: 'only-in-a', role: 'TENANT_OWNER', active: true }] });
-    });
+    finishA({ memberships: [{ uid: 'only-in-a', role: 'TENANT_OWNER', active: true }] });
+    await Promise.resolve();
     expect(screen.getByText('only-in-b')).toBeInTheDocument();
     expect(screen.queryByText('only-in-a')).not.toBeInTheDocument();
     expect(mocks.apiRequest).not.toHaveBeenCalledWith('/platform/tenants/tenant-a/support', expect.anything());
@@ -227,11 +226,10 @@ describe('Platform Owner membership administration', () => {
     ));
     fireEvent.click(buttons[1]);
     await screen.findByText('owner-b');
-    await act(async () => {
-      finishSupportA({ grant: {
-        active: true, expiresAt: new Date(Date.now() + 60000).toISOString(), reason: 'Support for A',
-      } });
-    });
+    finishSupportA({ grant: {
+      active: true, expiresAt: new Date(Date.now() + 60000).toISOString(), reason: 'Support for A',
+    } });
+    await Promise.resolve();
     expect(screen.getByText('owner-b')).toBeInTheDocument();
     expect(screen.queryByText('owner-a')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Revogar suporte' })).not.toBeInTheDocument();
