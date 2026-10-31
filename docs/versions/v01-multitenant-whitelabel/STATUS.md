@@ -42,6 +42,14 @@ Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 - Testes de regressão cobrem 255 memberships, escopo de cursor e limites, paginação na UI, troca de banca com falha e branding administrativo divergente.
 - Os resultados desta rodada dependem do CI verde no último SHA; commits anteriores não provam o estado mais recente.
 
+## Incremento de auditoria consultável — 2026-10-31
+- API `GET /api/platform/audit` protegida por `requirePlatformOwner`, somente leitura, com paginação (20 a 50 registros por página) e filtro opcional `tenantId`.
+- Ordenação por `createdAt DESC` e `__name__ DESC`, cursor exclusivo reconstruído no Worker; o backend não devolve o campo interno `details` na listagem.
+- Painel global inclui eventos de criação/ativação de tenants, memberships e concessões/revogações de suporte; filtro e paginação descartam respostas obsoletas.
+- Dois índices compostos de `auditLogs` adicionados em `firestore.indexes.json`, incluindo consulta global e filtrada por tenant. **Necessário publicar os índices no ambiente real antes de usar a nova consulta**.
+- Testes unitários de API (paginações, filtro e validação) e interface (filtro, respostas antigas e recuperação de erro).
+- Auditoria de ações **não** é auditoria por leitura individual; concessão de suporte não representa consentimento separado da banca.
+
 ## Evidências automatizadas (sem acesso a dados reais)
 - testes de integração de autenticação Firebase assinada e isolamento A × B;
 - testes de slugs, permissões por tenant, suporte de leitura com expiração e negação de privilégios;
