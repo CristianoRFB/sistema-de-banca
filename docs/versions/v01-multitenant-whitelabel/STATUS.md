@@ -48,6 +48,7 @@ Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 - Painel global inclui eventos de criação/ativação de tenants, memberships e concessões/revogações de suporte; filtro e paginação descartam respostas obsoletas.
 - Dois índices compostos de `auditLogs` adicionados em `firestore.indexes.json`, incluindo consulta global e filtrada por tenant. **Necessário publicar os índices no ambiente real antes de usar a nova consulta**.
 - Testes unitários de API (paginações, filtro e validação) e interface (filtro, respostas antigas e recuperação de erro).
+- O console global monta novamente ao mudar o UID Firebase autenticado, descartando listas, filtros e histórico de auditoria da identidade anterior.
 - Auditoria de ações **não** é auditoria por leitura individual; concessão de suporte não representa consentimento separado da banca.
 
 ## Evidências automatizadas (sem acesso a dados reais)
