@@ -88,14 +88,18 @@ describe('Platform Owner membership administration', () => {
     const user = userEvent.setup();
     render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: 'Acessos' }));
-    await user.click(await screen.findByRole('button', { name: 'Revogar acesso de operator-one' }));
+    const revoke = await screen.findByRole('button', { name: 'Revogar acesso de operator-one' });
+    await waitFor(() => expect(revoke).toBeEnabled());
+    await user.click(revoke);
     expect(mocks.confirm).toHaveBeenCalledOnce();
     await waitFor(() => expect(membershipActive).toBe(false));
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       '/platform/tenants/tenant-a/memberships/operator-one',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ role: 'STAFF', active: false }) }),
     );
-    await user.click(await screen.findByRole('button', { name: 'Reativar acesso de operator-one' }));
+    const reactivate = await screen.findByRole('button', { name: 'Reativar acesso de operator-one' });
+    await waitFor(() => expect(reactivate).toBeEnabled());
+    await user.click(reactivate);
     await waitFor(() => expect(membershipActive).toBe(true));
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       '/platform/tenants/tenant-a/memberships/operator-one',
@@ -240,7 +244,9 @@ describe('Platform Owner membership administration', () => {
     const user = userEvent.setup();
     render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: 'Acessos' }));
-    await user.click(await screen.findByRole('button', { name: 'Revogar acesso de operator-one' }));
+    const revoke = await screen.findByRole('button', { name: 'Revogar acesso de operator-one' });
+    await waitFor(() => expect(revoke).toBeEnabled());
+    await user.click(revoke);
     expect(membershipActive).toBe(true);
     expect(mocks.apiRequest).not.toHaveBeenCalledWith(
       '/platform/tenants/tenant-a/memberships/operator-one',
