@@ -1,5 +1,6 @@
 import { eq, firestoreDocName, firestoreString, jsonResponse, parseLimit, query, readJsonBody } from "../api";
 import { requirePlatformOwner } from "../security";
+import { listPlatformAudit } from "./platform-audit";
 import { listTenantDocuments, validateTenantSlugForCreation } from "../tenant";
 import { HttpError, type JsonObject, type PlatformIdentity, type RequestContext, type TenantRole } from "../types";
 
@@ -263,6 +264,9 @@ export async function handlePlatformRoute(ctx: RequestContext): Promise<Response
   const actor = await requirePlatformOwner(ctx);
   const pathname = ctx.url.pathname;
 
+  if (ctx.request.method === "GET" && pathname === "/api/platform/audit") {
+    return listPlatformAudit(ctx);
+  }
   if (ctx.request.method === "GET" && pathname === "/api/platform/tenants") {
     return listTenants(ctx);
   }
