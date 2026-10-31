@@ -50,6 +50,7 @@ export function PlatformAdminPage() {
   const [supportGrant, setSupportGrant] = useState<PlatformSupportGrant | null>(null);
   const [supportReason, setSupportReason] = useState('');
   const [supportMinutes, setSupportMinutes] = useState(15);
+  const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -333,9 +334,8 @@ export function PlatformAdminPage() {
                 <Button type="button" variant="secondary" disabled={working}
                   onClick={() => void changeSupportStatus('revoke')}>Revogar suporte</Button>
               )}
-              {supportGrant?.active && (
-                <Link className="button button--secondary"
-                  to={tenantPanelPath(tenants.find((tenant) => tenant.id === selectedTenantId)?.slug ?? '')}>
+              {supportGrant?.active && selectedTenant && (
+                <Link className="button button--secondary" to={tenantPanelPath(selectedTenant.slug)}>
                   Abrir painel para suporte
                 </Link>
               )}
