@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlatformAdminPage } from '../../src/pages/platform/PlatformAdminPage';
@@ -185,15 +185,14 @@ describe('Platform Owner membership administration', () => {
       });
       throw new Error('Unexpected API request: ' + path);
     });
-    const user = userEvent.setup();
     render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
     const buttons = await screen.findAllByRole('button', { name: 'Acessos' });
-    await user.click(buttons[0]);
+    fireEvent.click(buttons[0]);
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
       '/platform/tenants/tenant-a/memberships', expect.anything(),
     ));
     expect(buttons[1]).toBeEnabled();
-    await user.click(buttons[1]);
+    fireEvent.click(buttons[1]);
     await screen.findByText('only-in-b');
     await act(async () => {
       finishA({ memberships: [{ uid: 'only-in-a', role: 'TENANT_OWNER', active: true }] });
@@ -220,14 +219,13 @@ describe('Platform Owner membership administration', () => {
       });
       throw new Error('Unexpected API request: ' + path);
     });
-    const user = userEvent.setup();
     render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
     const buttons = await screen.findAllByRole('button', { name: 'Acessos' });
-    await user.click(buttons[0]);
+    fireEvent.click(buttons[0]);
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
       '/platform/tenants/tenant-a/support', expect.anything(),
     ));
-    await user.click(buttons[1]);
+    fireEvent.click(buttons[1]);
     await screen.findByText('owner-b');
     await act(async () => {
       finishSupportA({ grant: {
