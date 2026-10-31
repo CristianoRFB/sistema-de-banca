@@ -51,6 +51,15 @@ Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 - O console global monta novamente ao mudar o UID Firebase autenticado, descartando listas, filtros e histórico de auditoria da identidade anterior.
 - Auditoria de ações **não** é auditoria por leitura individual; concessão de suporte não representa consentimento separado da banca.
 
+## Incremento de provisionamento atômico — 2026-10-31
+- Criação de novos tenants exige `initialOwnerUid` explícito; não existe promoção automática do criador, e-mail ou conta de teste.
+- Worker grava banca, membership `TENANT_OWNER` ativa, reserva de slug `tenantSlugs/{slug}` e dois eventos de auditoria na **mesma transação**.
+- Pré-verificação preserva compatibilidade com slugs de bancas existentes antes da introdução do registro; a reserva de slug usa precondition `mustNotExist` como defesa contra criações concorrentes.
+- Painel solicita o UID Firebase Auth do responsável antes de permitir criar a banca.
+- Testes cobrem sucesso, ausência/invalidade de UID, slug existente (com e sem reserva), falha de commit sem estado parcial e repetição do mesmo slug.
+- **Limite operacional:** o Worker verifica o formato do UID, mas **não** comprova que ele já existe no Firebase Auth nem que o titular aceitou o convite; contas/consentimento reais devem ser verificados em homologação.
+- Novas bancas não são criadas em produção por esta alteração. Dados preexistentes e migração da Ana Maria continuam preservados.
+
 ## Evidências automatizadas (sem acesso a dados reais)
 - testes de integração de autenticação Firebase assinada e isolamento A × B;
 - testes de slugs, permissões por tenant, suporte de leitura com expiração e negação de privilégios;
