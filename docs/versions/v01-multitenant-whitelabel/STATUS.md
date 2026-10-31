@@ -33,6 +33,14 @@ Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 - Novos testes unitários de isolamento de sessão, migração, troca de UID e slug inválido.
 - Os testes e builds desse incremento só contam como validados após CI verde no SHA correspondente, não pela mera publicação dos commits.
 
+## Incremento de governança — 2026-10-31
+- API do Platform Owner lista memberships por página (50 por padrão, máximo 100), ordenadas por documento, com cursor exclusivo reconstruído no servidor dentro do caminho do tenant.
+- UI permite carregar mais memberships sem perder as anteriores e limpa a lista ao mudar de tenant, inclusive se uma consulta falhar.
+- Link de suporte não utiliza mais o tenant padrão quando o tenant selecionado não é encontrado.
+- Branding do AdminShell só é aplicado se o bootstrap corresponder ao slug ativo e estiver habilitado, sem exibir visual de outra banca durante navegação.
+- Testes de regressão cobrem 255 memberships, escopo de cursor e limites, paginação na UI, troca de banca com falha e branding administrativo divergente.
+- Os resultados desta rodada dependem do CI verde no último SHA; commits anteriores não provam o estado mais recente.
+
 ## Evidências automatizadas (sem acesso a dados reais)
 - testes de integração de autenticação Firebase assinada e isolamento A × B;
 - testes de slugs, permissões por tenant, suporte de leitura com expiração e negação de privilégios;
