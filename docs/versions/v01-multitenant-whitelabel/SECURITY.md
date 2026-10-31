@@ -17,6 +17,7 @@ Regras:
 - o painel identifica o modo temporário como **somente leitura** e a data de expiração;
 - a concessão administrativa não representa consentimento separado do titular da banca; eventual fluxo de consentimento do tenant ainda não foi implementado;
 - auditoria registra concessão/revogação, mas não equivale a rastreamento individual de cada leitura de dados.
+- o Platform Owner pode consultar eventos com `GET /api/platform/audit`; o endpoint exige sua identidade no Worker, usa paginação e filtro por tenant no Firestore e não divulga `details` na listagem. O índice correspondente precisa estar implantado no ambiente de destino.
 - sessão de cliente precisa pertencer à mesma banca;
 - dados privados não podem cruzar tenants.
 
