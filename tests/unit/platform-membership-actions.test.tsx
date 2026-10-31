@@ -57,6 +57,33 @@ describe('Platform Owner membership administration', () => {
     });
   });
 
+  it('requires an explicitly provisioned Firebase owner UID when creating a tenant', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/platform/tenants' && (init?.method ?? 'GET') === 'GET') return { tenants: [] };
+      if (path === '/platform/tenants' && init?.method === 'POST') {
+        return { tenant: { id: 'new-tenant', slug: 'tenant-novo' } };
+      }
+      throw new Error('Unexpected platform API request: ' + path);
+    });
+    const user = userEvent.setup();
+    render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
+    const create = screen.getByRole('button', { name: 'Criar tenant com proprietário' });
+    expect(create).toBeDisabled();
+    await user.type(screen.getByLabelText('Nome'), 'Banca Nova');
+    await user.type(screen.getByLabelText('Slug'), 'tenant-novo');
+    expect(create).toBeDisabled();
+    await user.type(screen.getByLabelText('Firebase Auth UID do Tenant Owner'), 'uid-dono-123');
+    expect(create).toBeEnabled();
+    await user.click(create);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/platform/tenants',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'Banca Nova', slug: 'tenant-novo', initialOwnerUid: 'uid-dono-123' }),
+      }),
+    ));
+  });
+
   it('revokes and reactivates a membership using the audited server endpoint', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
