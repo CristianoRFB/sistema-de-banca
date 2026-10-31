@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlatformAdminPage } from '../../src/pages/platform/PlatformAdminPage';
@@ -162,6 +162,77 @@ describe('Platform Owner membership administration', () => {
     await screen.findByRole('alert');
     expect(screen.queryByText('only-in-a')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Tenant B unavailable');
+  });
+
+  it('ignores a delayed membership response for a previous bank after switching tenants', async () => {
+    let finishA!: (value: unknown) => void;
+    const first = new Promise((resolve) => { finishA = resolve; });
+    mocks.apiRequest.mockImplementation((path: string) => {
+      if (path === '/platform/tenants') return Promise.resolve({ tenants: [
+        { id: 'tenant-a', slug: 'banca-a', name: 'Banca A', active: true },
+        { id: 'tenant-b', slug: 'banca-b', name: 'Banca B', active: true },
+      ] });
+      if (path === '/platform/tenants/tenant-a/memberships') return first;
+      if (path === '/platform/tenants/tenant-b/memberships') return Promise.resolve({
+        memberships: [{ uid: 'only-in-b', role: 'ADMIN', active: true }],
+      });
+      if (path === '/platform/tenants/tenant-b/support') return Promise.resolve({
+        grant: { active: false, expiresAt: null, reason: null },
+      });
+      throw new Error('Unexpected API request: ' + path);
+    });
+    const user = userEvent.setup();
+    render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
+    const buttons = await screen.findAllByRole('button', { name: 'Acessos' });
+    await user.click(buttons[0]);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/platform/tenants/tenant-a/memberships', expect.anything(),
+    ));
+    expect(buttons[1]).toBeEnabled();
+    await user.click(buttons[1]);
+    await screen.findByText('only-in-b');
+    await act(async () => {
+      finishA({ memberships: [{ uid: 'only-in-a', role: 'TENANT_OWNER', active: true }] });
+    });
+    expect(screen.getByText('only-in-b')).toBeInTheDocument();
+    expect(screen.queryByText('only-in-a')).not.toBeInTheDocument();
+    expect(mocks.apiRequest).not.toHaveBeenCalledWith('/platform/tenants/tenant-a/support', expect.anything());
+  });
+
+  it('ignores stale support permissions when switching banks before the old request resolves', async () => {
+    let finishSupportA!: (value: unknown) => void;
+    const first = new Promise((resolve) => { finishSupportA = resolve; });
+    mocks.apiRequest.mockImplementation((path: string) => {
+      if (path === '/platform/tenants') return Promise.resolve({ tenants: [
+        { id: 'tenant-a', slug: 'banca-a', name: 'Banca A', active: true },
+        { id: 'tenant-b', slug: 'banca-b', name: 'Banca B', active: true },
+      ] });
+      if (path.endsWith('/memberships')) return Promise.resolve({
+        memberships: [{ uid: path.includes('tenant-a') ? 'owner-a' : 'owner-b', role: 'TENANT_OWNER', active: true }],
+      });
+      if (path === '/platform/tenants/tenant-a/support') return first;
+      if (path === '/platform/tenants/tenant-b/support') return Promise.resolve({
+        grant: { active: false, expiresAt: null, reason: null },
+      });
+      throw new Error('Unexpected API request: ' + path);
+    });
+    const user = userEvent.setup();
+    render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
+    const buttons = await screen.findAllByRole('button', { name: 'Acessos' });
+    await user.click(buttons[0]);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/platform/tenants/tenant-a/support', expect.anything(),
+    ));
+    await user.click(buttons[1]);
+    await screen.findByText('owner-b');
+    await act(async () => {
+      finishSupportA({ grant: {
+        active: true, expiresAt: new Date(Date.now() + 60000).toISOString(), reason: 'Support for A',
+      } });
+    });
+    expect(screen.getByText('owner-b')).toBeInTheDocument();
+    expect(screen.queryByText('owner-a')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revogar suporte' })).not.toBeInTheDocument();
   });
 
   it('does not revoke a membership when cancellation is selected', async () => {
