@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
 import { adminRepository, type AdminNotification } from '../../features/admin/admin.repository';
 import { AdminEmpty, AdminHeading, AdminLoadError, AdminLoading } from './AdminCommon';
+import { currentTenantSlug, tenantPanelPath } from '../../app/tenant';
 
 function formatDate(value: string | null) {
   if (!value) return 'Data não informada';
@@ -63,7 +64,7 @@ export function NotificacoesAdminPage() {
       <div className="admin-notification-list">{notifications.map((item) => <article className={`admin-notification-card${item.read ? '' : ' is-unread'}`} key={item.id}>
         <span className="admin-notification-card__icon"><Bell size={18} /></span>
         <div className="admin-notification-card__body"><div className="admin-notification-card__meta"><Badge tone={item.read ? 'muted' : 'orange'}>{item.read ? 'Lido' : 'Novo'}</Badge><span className="eyebrow">{formatDate(item.createdAt)}</span></div><h2>{item.title}</h2><p>{item.message}</p><small>{item.type.replaceAll('_', ' ').toLocaleLowerCase('pt-BR')}</small></div>
-        <div className="admin-notification-card__actions">{item.reservationId && <Link className="text-button" to="/admin/reservas">Abrir reservas</Link>}{!item.read && <Button variant="secondary" size="small" disabled={savingId !== null} onClick={() => void markRead(item)}>{savingId === item.id ? 'Salvando…' : <><Check size={15} /> Marcar como lido</>}</Button>}</div>
+        <div className="admin-notification-card__actions">{item.reservationId && <Link className="text-button" to={tenantPanelPath(currentTenantSlug(), 'reservas')}>Abrir reservas</Link>}{!item.read && <Button variant="secondary" size="small" disabled={savingId !== null} onClick={() => void markRead(item)}>{savingId === item.id ? 'Salvando…' : <><Check size={15} /> Marcar como lido</>}</Button>}</div>
       </article>)}</div>
       {cursor && <div className="history-load-more"><Button variant="secondary" disabled={loadingMore} onClick={() => void load(cursor)}>{loadingMore ? 'Carregando…' : moreFailed ? 'Tentar carregar novamente' : 'Carregar mais avisos'}</Button></div>}
     </> : <AdminEmpty title="Nenhum aviso por enquanto" detail="Quando um lembrete operacional for gerado, ele ficará disponível nesta caixa." />}

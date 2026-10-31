@@ -1,0 +1,14 @@
+flowchart LR
+  Firebase[Firebase Auth] --> Token[ID Token]
+  Token --> PlatformCheck{platformOwners uid active?}
+  Token --> Membership{bancas/bancaId/usuarios/uid}
+  PlatformCheck -->|yes| PlatformOwner[PLATFORM_OWNER]
+  Membership -->|TENANT_OWNER| Owner[Tenant Owner]
+  Membership -->|STAFF| Staff[Staff]
+  Membership -->|ADMIN| Admin[Admin legacy]
+  Membership -->|OPERADOR| Operator[Operador legacy]
+  PlatformOwner --> AnyTenant[Global tenant administration]
+  Owner --> OneTenant[Own tenant]
+  Staff --> OneTenant
+  Admin --> OneTenant
+  Operator --> OneTenant

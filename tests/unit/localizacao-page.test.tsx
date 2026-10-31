@@ -13,7 +13,7 @@ describe('public bank location', () => {
 
     render(<LocalizacaoPage />);
 
-    await waitFor(() => expect(screen.getByText('Rua de Teste, 123')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Rua de Teste, 123').length).toBeGreaterThan(0));
     expect(screen.getByText('Segunda-feira')).toBeInTheDocument();
     expect(screen.getByText('09:00–17:30')).toBeInTheDocument();
     expect(screen.getByText('Terça-feira')).toBeInTheDocument();

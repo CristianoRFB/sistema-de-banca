@@ -1,5 +1,5 @@
 import { FirestoreRest } from "./firebase/firestore-rest";
-import { HttpError, type AdminIdentity, type Bindings, type ClientIdentity, type RequestContext } from "./types";
+import { HttpError, type AdminIdentity, type Bindings, type ClientIdentity, type PlatformIdentity, type RequestContext, type TenantRole } from "./types";
 
 interface FirebaseJwkSet {
   keys: JsonWebKey[];
@@ -57,7 +57,17 @@ export async function hashClientSessionToken(env: Bindings, token: string): Prom
 }
 
 export async function hashCustomerPhone(env: Bindings, normalizedPhone: string): Promise<string> {
-  return hmac(env.CLIENT_SESSION_PEPPER, `customer-phone:v1:${normalizedPhone}`);
+  const tenantId = env.BANCA_ID?.trim();
+  return hmac(
+    env.CLIENT_SESSION_PEPPER,
+    tenantId
+      ? `customer-phone:v2:${tenantId}:${normalizedPhone}`
+      : `customer-phone:v1:${normalizedPhone}`,
+  );
+}
+
+export async function hashTenantCustomerPhone(env: Bindings, tenantId: string, normalizedPhone: string): Promise<string> {
+  return hmac(env.CLIENT_SESSION_PEPPER, `customer-phone:v2:${tenantId}:${normalizedPhone}`);
 }
 
 export function createClientSessionToken(): string {
@@ -113,7 +123,8 @@ export async function rateLimit(ctx: RequestContext, scope: "public-search" | "c
     throw new HttpError({ code: "rate_limit_unavailable", message: "Client routes are temporarily unavailable.", status: 503 });
   }
   const address = ctx.request.headers.get("cf-connecting-ip") ?? "unknown";
-  const hashedAddress = await hmac(ctx.env.CLIENT_SESSION_PEPPER, `rate-limit:v1:${scope}:${address}`);
+  // Tenant scope prevents traffic to one banca from consuming another banca's allowance.
+  const hashedAddress = await hmac(ctx.env.CLIENT_SESSION_PEPPER, `rate-limit:v2:${ctx.tenant.id}:${scope}:${address}`);
   const result = await ctx.env.CLIENT_RATE_LIMITER.limit({ key: hashedAddress });
   if (!result.success) throw new HttpError({ code: "rate_limited", message: "Too many requests. Try again shortly.", status: 429 });
 }
@@ -134,20 +145,21 @@ export async function getClientIdentity(ctx: RequestContext): Promise<ClientIden
     throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
   }
   if (sessionExpiresAt - Date.now() <= CLIENT_SESSION_RENEWAL_THRESHOLD_MS) {
+    if (!sessionDoc.updateTime) {
+      // A renewal must never overwrite a revoked or concurrently changed
+      // session without a Firestore document-version precondition.
+      throw new HttpError({ code: "session_invalid", message: "The client session cannot be renewed safely.", status: 401 });
+    }
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 30 * 86_400_000).toISOString();
-    await ctx.db.transact(async (transaction) => {
-      const current = await transaction.get(`sessoesClientes/${sessionId}`);
-      const currentExpiry = Date.parse(String(current?.data.expiraEm ?? ""));
-      if (!current || current.data.ativa !== true || current.data.bancaId !== ctx.env.BANCA_ID || current.data.clienteId !== clientId || !Number.isFinite(currentExpiry) || currentExpiry <= now.getTime()) {
-        throw new HttpError({ code: "session_invalid", message: "The client session is invalid or has expired.", status: 401 });
-      }
-      transaction.set(`sessoesClientes/${sessionId}`, {
-        ...current.data,
-        expiraEm: expiresAt,
-        ultimoAcesso: now.toISOString(),
-      });
-    });
+    // Firestore conditional commit is atomic. Unlike a second read within a
+    // transaction, the updateTime precondition never permits stale session
+    // data to overwrite a revocation or membership change.
+    await ctx.db.commit([{
+      path: `sessoesClientes/${sessionId}`,
+      data: { ...sessionDoc.data, expiraEm: expiresAt, ultimoAcesso: now.toISOString() },
+      updateTime: sessionDoc.updateTime,
+    }]);
   }
   return { sessionId, clientId, session: sessionDoc.data, client: clientDoc.data };
 }
@@ -164,7 +176,7 @@ async function secureTokenJwks(): Promise<JsonWebKey[]> {
   return jwkCache.keys;
 }
 
-async function verifyFirebaseIdToken(token: string, projectId: string): Promise<FirebaseIdTokenClaims> {
+export async function verifyFirebaseIdToken(token: string, projectId: string): Promise<FirebaseIdTokenClaims> {
   const pieces = token.split(".");
   if (pieces.length !== 3) throw new HttpError({ code: "admin_auth_required", message: "A valid Firebase ID token is required.", status: 401 });
 
@@ -197,17 +209,88 @@ async function verifyFirebaseIdToken(token: string, projectId: string): Promise<
   return claims;
 }
 
-export async function requireAdmin(ctx: RequestContext, allowedRoles: Array<"ADMIN" | "OPERADOR"> = ["ADMIN", "OPERADOR"]): Promise<AdminIdentity> {
+function bearerToken(ctx: RequestContext): string {
   const authorization = ctx.request.headers.get("authorization") ?? "";
   const match = authorization.match(/^Bearer\s+([A-Za-z0-9._-]+)$/);
   if (!match) throw new HttpError({ code: "admin_auth_required", message: "A Firebase ID token is required.", status: 401 });
-  const claims = await verifyFirebaseIdToken(match[1], ctx.env.FIREBASE_PROJECT_ID);
-  const user = await ctx.db.get(`bancas/${ctx.env.BANCA_ID}/usuarios/${claims.sub}`);
-  const role = user?.data.papel;
-  if (!user || user.data.ativo !== true || (role !== "ADMIN" && role !== "OPERADOR") || !allowedRoles.includes(role)) {
-    throw new HttpError({ code: "admin_forbidden", message: "This account is not authorized for this bank operation.", status: 403 });
+  return match[1];
+}
+
+export async function requirePlatformOwner(ctx: RequestContext): Promise<PlatformIdentity> {
+  const claims = await verifyFirebaseIdToken(bearerToken(ctx), ctx.env.FIREBASE_PROJECT_ID);
+  const owner = await ctx.db.get(`platformOwners/${claims.sub}`);
+  if (!owner || owner.data.ativo !== true) {
+    throw new HttpError({ code: "platform_forbidden", message: "This account is not authorized for platform administration.", status: 403 });
   }
-  return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
+  return { uid: claims.sub, role: "PLATFORM_OWNER", claims: claims as Record<string, unknown> };
+}
+
+/**
+ * Memberships are tenant-local: an active platform owner alone is never a
+ * substitute for explicit authorization to the tenant's operational records.
+ */
+export function authorizedTenantMembershipRole(
+  membership: Record<string, unknown> | undefined,
+  allowedRoles: TenantRole[],
+): TenantRole | null {
+  if (!membership || membership.ativo !== true) return null;
+  const role = membership.papel;
+  if (role !== "ADMIN" && role !== "OPERADOR" && role !== "TENANT_OWNER" && role !== "STAFF") return null;
+  const permissionRole = role === "TENANT_OWNER" ? "ADMIN" : role === "STAFF" ? "OPERADOR" : role;
+  return allowedRoles.includes(permissionRole) ? role : null;
+}
+
+/**
+ * Temporary platform support grants are read-only and tenant-bound.
+ * Explicit server-side expiry and active status are mandatory.
+ */
+export function isValidSupportGrant(
+  grant: Record<string, unknown> | undefined,
+  tenantId: string,
+  ownerUid: string,
+  method: string,
+  now = Date.now(),
+): boolean {
+  if (method !== "GET" || !grant || grant.ativo !== true) return false;
+  if (grant.bancaId !== tenantId || grant.uid !== ownerUid) return false;
+  if (typeof grant.expiraEm !== "string") return false;
+  const expiry = Date.parse(grant.expiraEm);
+  return Number.isFinite(expiry) && expiry > now;
+}
+
+export async function requireAdmin(
+  ctx: RequestContext,
+  allowedRoles: TenantRole[] = ["ADMIN", "OPERADOR", "TENANT_OWNER", "STAFF"],
+): Promise<AdminIdentity> {
+  // Defense in depth: every admin authorization must use the tenant resolved
+  // by the request router, never a mismatched legacy or caller-provided ID.
+  if (ctx.env.BANCA_ID !== ctx.tenant.id) {
+    throw new HttpError({ code: "tenant_context_mismatch", message: "Tenant context is inconsistent.", status: 500 });
+  }
+  const claims = await verifyFirebaseIdToken(bearerToken(ctx), ctx.env.FIREBASE_PROJECT_ID);
+  const user = await ctx.db.get(`bancas/${ctx.tenant.id}/usuarios/${claims.sub}`);
+  const role = authorizedTenantMembershipRole(user?.data, allowedRoles);
+  if (role) return { uid: claims.sub, role, claims: claims as Record<string, unknown> };
+
+  // Platform Owner never receives implicit tenant access. The explicitly
+  // granted support mode is short-lived, read-only and checked on every request.
+  if (ctx.request.method === "GET") {
+    const platformOwner = await ctx.db.get(`platformOwners/${claims.sub}`);
+    if (platformOwner?.data.ativo === true) {
+      const supportGrant = await ctx.db.get(`bancas/${ctx.tenant.id}/supportGrants/${claims.sub}`);
+      if (isValidSupportGrant(supportGrant?.data, ctx.tenant.id, claims.sub, ctx.request.method)) {
+        return {
+          uid: claims.sub,
+          role: "PLATFORM_OWNER",
+          claims: claims as Record<string, unknown>,
+          platformOverride: true,
+          supportExpiresAt: String(supportGrant?.data.expiraEm),
+        };
+      }
+    }
+  }
+
+  throw new HttpError({ code: "admin_forbidden", message: "This account is not authorized for this bank operation.", status: 403 });
 }
 
 export function publicProfile(data: Record<string, unknown>): Record<string, unknown> {

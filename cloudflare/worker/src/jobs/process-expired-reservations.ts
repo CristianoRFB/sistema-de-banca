@@ -1,11 +1,11 @@
 import { assertInventoryValid, reservationAvailability } from "../domain";
 import { catalogRowsForStocks, compare, eq, firestoreString, query, setCatalogAvailability } from "../api";
 import { FirestoreRest } from "../firebase/firestore-rest";
-import type { Bindings, FirestoreDocument, JsonObject } from "../types";
+import type { ScopedBindings, FirestoreDocument, JsonObject } from "../types";
 
 const OPEN_ITEM_STATUSES = new Set(["RESERVADO", "RETIRADA_INFORMADA"]);
 
-export async function processExpiredReservations(db: FirestoreRest, env: Bindings, now = new Date()): Promise<number> {
+export async function processExpiredReservations(db: FirestoreRest, env: ScopedBindings, now = new Date()): Promise<number> {
   const due = await db.query("reservas", query("reservas", [
     eq("bancaId", firestoreString(env.BANCA_ID)),
     { field: { fieldPath: "status" }, op: "IN", value: { arrayValue: { values: [firestoreString("ATIVA"), firestoreString("PARCIALMENTE_RETIRADA")] } } },

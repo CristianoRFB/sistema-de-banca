@@ -212,7 +212,7 @@ async function createContext(db: InMemoryFirestore, path: string, key: string): 
       ? JSON.stringify({ desiredDate: nextOpenDate(), desiredTime: "12:00", items: [{ itemReparteId: stockId, quantity: 1 }] })
       : "{}",
   });
-  return { request, url: new URL(request.url), env, db, corsOrigin: null };
+  return { request, url: new URL(request.url), env, db, corsOrigin: null, tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false } };
 }
 
 async function createRouteContext(
@@ -244,7 +244,7 @@ async function createRouteContext(
     headers,
     ...(["GET", "HEAD"].includes(options.method.toUpperCase()) ? {} : { body: JSON.stringify(options.body) }),
   });
-  return { request, url: new URL(request.url), env, db, corsOrigin: null };
+  return { request, url: new URL(request.url), env, db, corsOrigin: null, tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false } };
 }
 
 function nextOpenDate(): string {
@@ -566,7 +566,7 @@ describe("Cloudflare Worker reservation transactions", () => {
     const request = new Request("https://banca.example.test/api/client/profile", {
       headers: { authorization: `Bearer ${clientToken}` },
     });
-    const ctx: RequestContext = { request, url: new URL(request.url), env, db, corsOrigin: null };
+    const ctx: RequestContext = { request, url: new URL(request.url), env, db, corsOrigin: null, tenant: { id: bankId, slug: "test-bank", name: "Test Banca", active: true, legacyFallback: false } };
 
     await getClientIdentity(ctx);
 

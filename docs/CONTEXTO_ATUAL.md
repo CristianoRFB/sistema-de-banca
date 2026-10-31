@@ -1,5 +1,16 @@
 # CONTEXTO ATUAL
 
+> A fonte canônica vigente está em `docs/CURRENT.md`. O conteúdo histórico abaixo permanece para rastreabilidade.
+
+## Estado em 2026-10-27 — branch Multi-Tenant
+- Branch de implementação: `chat/multitenant-core-v01`.
+- Tenant Resolver por slug, rotas tenant-scoped, Platform Owner, memberships, jobs/cache tenant-aware, índice de telefone v2 e white-label básico estão implementados na branch.
+- Banca Ana Maria continua sendo o Tenant A a preservar; a migração de produção ainda não foi executada.
+- Deploy/Cloudflare/Firebase reais continuam dependentes dos bloqueios externos documentados.
+- Pricing/entitlements não fazem parte desta etapa.
+- Consulte `docs/versions/v01-multitenant-whitelabel/STATUS.md` para o estado verificável.
+
+
 Projeto: sistema de reservas, catálogo e operação de consignação/recolhimento para a Banca Ana Maria, com foco absoluto em uso por celular.
 
 Este arquivo é memória operacional do desenvolvimento. O agente deve atualizá-lo quando concluir módulos, descobrir limitações, alterar decisões ou estabelecer integrações que afetem trabalhos futuros.

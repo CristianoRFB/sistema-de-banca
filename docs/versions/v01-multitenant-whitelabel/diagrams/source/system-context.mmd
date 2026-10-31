@@ -1,0 +1,8 @@
+flowchart LR
+  Customer[Cliente] --> TenantSite[Site da Banca]
+  Staff[Tenant Owner / Staff] --> TenantPanel[Painel da Banca]
+  Platform[Platform Owner] --> PlatformPanel[Platform Admin]
+  TenantSite --> Worker[Cloudflare Worker]
+  TenantPanel --> Worker
+  PlatformPanel --> Worker
+  Worker --> Firebase[(Firebase Auth + Firestore)]

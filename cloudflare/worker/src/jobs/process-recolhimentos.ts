@@ -1,7 +1,7 @@
 import { eq, firestoreString, query } from "../api";
 import { localDateString } from "../domain";
 import { FirestoreRest } from "../firebase/firestore-rest";
-import type { Bindings } from "../types";
+import type { ScopedBindings } from "../types";
 
 function daysBetween(today: string, due: string): number {
   const [todayYear, todayMonth, todayDay] = today.split("-").map(Number);
@@ -17,7 +17,7 @@ function dueLocalDate(value: unknown): string | null {
   return localDateString(date);
 }
 
-export async function processRecollections(db: FirestoreRest, env: Bindings, now = new Date()): Promise<number> {
+export async function processRecollections(db: FirestoreRest, env: ScopedBindings, now = new Date()): Promise<number> {
   const repartes = await db.query("repartes", query("repartes", [
     eq("bancaId", firestoreString(env.BANCA_ID)),
     eq("status", firestoreString("ATIVO")),

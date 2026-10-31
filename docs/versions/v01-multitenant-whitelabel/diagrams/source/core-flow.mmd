@@ -1,0 +1,9 @@
+flowchart LR
+  Catalog[Catálogo público] --> Product[Produto]
+  Product --> ClientSession[Sessão do cliente]
+  ClientSession --> Reservation[Reserva]
+  Reservation --> Intent[Intenção de retirada]
+  Intent --> Pickup[Retirada confirmada]
+  Pickup --> History[Histórico]
+  Reservation --> Expiry[Expiração automática]
+  Expiry --> History

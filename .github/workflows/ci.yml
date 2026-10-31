@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'chat/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+# Keep only the latest CI run per branch/ref; previous pushes must not block
+# final HEAD validation when several safe commits land in succession.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - run: npm run worker:typecheck
+      - run: npm run docs:check
+
+
+  firestore-emulator:
+    name: Firestore Emulator — Tenant A x Tenant B
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Verify Rules and Worker against local Firestore Emulator
+        # Demo project, localhost only, no GCP/Firebase credentials or production writes.
+        run: npx --yes firebase-tools@14.19.0 emulators:exec --only firestore --project demo-banca 'npm run test:emulator'
+
+  browser-smoke:
+    name: Browser smoke — desktop/mobile (synthetic API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install pinned browser test runner without changing lockfile
+        run: npm install --no-save --package-lock=false @playwright/test@1.64.1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Render real frontend with explicitly mocked demo API and test tenant isolation
+        run: npx playwright test --config=playwright.config.mjs
+      - name: Upload actual UI captures (synthetic data, NOT production screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: banca-browser-ui-fixtures
+          path: |
+            test-results/browser-screenshots/
+            test-results/browser-report/
+            test-results/**/*.zip
+          retention-days: 14
+          if-no-files-found: warn

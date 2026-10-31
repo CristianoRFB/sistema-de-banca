@@ -728,3 +728,8 @@ img, svg { display: block; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* Tenant white-label primitives. Keep generated/lead visuals outside runtime CSS. */
+.tenant-logo { width: 38px; height: 38px; object-fit: contain; border-radius: 8px; flex: none; }
+.tenant-logo--small { width: 29px; height: 29px; }

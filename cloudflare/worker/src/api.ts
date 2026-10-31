@@ -1,7 +1,7 @@
 import { hashClientSessionToken } from "./security";
 import type { RequestContext } from "./types";
 import type { FirestoreTransaction } from "./firebase/firestore-rest";
-import { HttpError, type Bindings, type FirestoreDocument, type JsonObject } from "./types";
+import { HttpError, type FirestoreDocument, type JsonObject, type ScopedBindings } from "./types";
 
 export function jsonResponse(ctx: RequestContext, payload: unknown, status = 200): Response {
   const headers = new Headers({
@@ -104,7 +104,8 @@ export async function prepareIdempotency(ctx: RequestContext, transaction: Fires
     throw new HttpError({ code: "idempotency_key_required", message: "Send an Idempotency-Key header with 8 to 128 characters.", status: 400 });
   }
   const fingerprint = await requestFingerprint(body);
-  const docId = await hashClientSessionToken(ctx.env, `operation:v1:${scope}:${key}`);
+  // Tenant-bound operation IDs prevent replay collisions when an operator manages multiple bancas.
+  const docId = await hashClientSessionToken(ctx.env, `operation:v2:${ctx.tenant.id}:${scope}:${key}`);
   const path = `idempotency/${docId}`;
   const existing = await transaction.get(path);
   if (!existing) return { path, fingerprint };
@@ -168,7 +169,7 @@ export function query(collectionId: string, filters: JsonObject[], limit: number
   };
 }
 
-export async function catalogRowsForStocks(transaction: FirestoreTransaction, env: Bindings, itemReparteIds: string[]): Promise<Map<string, FirestoreDocument[]>> {
+export async function catalogRowsForStocks(transaction: FirestoreTransaction, env: ScopedBindings, itemReparteIds: string[]): Promise<Map<string, FirestoreDocument[]>> {
   const rows = new Map<string, FirestoreDocument[]>();
   for (const itemReparteId of [...new Set(itemReparteIds)]) {
     const documents = await transaction.query("itensLista", query("itensLista", [

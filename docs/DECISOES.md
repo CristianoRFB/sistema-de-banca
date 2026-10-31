@@ -42,3 +42,15 @@ Registre aqui mudanças relevantes tomadas durante o desenvolvimento, com data, 
 - O service worker usa NetworkFirst para GET de perfil público da banca e catálogo, mantendo até 120 respostas por 15 minutos e uma cópia de rede por 3 segundos antes de recorrer ao cache. O servidor permite cache curto de 60 segundos e revalidação stale por 14 minutos.
 - Busca pública de perfil de cliente, dados autenticados/admin e respostas de erro seguem `no-store`; nenhuma escrita é cacheada. Reservas e ações administrativas precisam de resposta online e validação transacional atual.
 - A UI informa quando o dispositivo está offline ou quando o service worker serviu uma cópia de reserva, mesmo se o navegador ainda indicar conexão. O aviso some após uma resposta pública atualizada. Uma reserva iniciada offline permanece indisponível.
+
+
+## 2026-10-27 — Multi-Tenant White-Label substitui a decisão single-banca
+
+- A decisão de 2026-09-28 que limitava a V1 a uma única banca está **SUBSTITUÍDA** pela transformação aprovada em SaaS Multi-Tenant White-Label.
+- `bancas/{bancaId}` passa a representar o tenant desta vertical; não criar Firebase/Worker/deploy por banca.
+- Produção resolve tenant por slug/request. `BANCA_ID` fica somente como compatibilidade legacy temporária.
+- `/admin` é Platform Owner; `/{tenantSlug}/painel` é administração local.
+- Memberships locais continuam em `bancas/{bancaId}/usuarios/{uid}`, com TENANT_OWNER/STAFF e compatibilidade ADMIN/OPERADOR.
+- Segurança e isolamento permanecem server-side e não são features comerciais.
+- PlanCatalog/Entitlements continuam NEXT; não foram implementados nesta decisão.
+- Documentação canônica passa a ser apontada por `docs/CURRENT.md`.
