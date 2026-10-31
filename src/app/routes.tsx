@@ -62,7 +62,7 @@ function TenantAdminGate() {
   const { user, loading } = useAdminAuth();
   const { tenantSlug } = useParams();
   const slug = normalizeTenantSlug(tenantSlug);
-  const [verified, setVerified] = useState<{ slug: string; uid: string; allowed: boolean; supportExpiresAt: string | null } | null>(null);
+  const [verified, setVerified] = useState<{ slug: string; uid: string; allowed: boolean; supportExpiresAt: string | null; supportExpired?: boolean } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -72,22 +72,42 @@ function TenantAdminGate() {
       .then((token) => apiRequest<{ session: { platformOverride: boolean; supportExpiresAt: string | null } }>(
         '/admin/session', { headers: { Authorization: `Bearer ${token}` } },
       ))
-      .then((data) => { if (active) setVerified({
-        slug, uid, allowed: true,
-        supportExpiresAt: data.session.platformOverride ? data.session.supportExpiresAt : null,
-      }); })
+      .then((data) => {
+        if (!active) return;
+        const expiry = data.session.platformOverride ? data.session.supportExpiresAt : null;
+        const supportValid = !!expiry && Number.isFinite(Date.parse(expiry)) && Date.parse(expiry) > Date.now();
+        setVerified({
+          slug, uid, allowed: !data.session.platformOverride || supportValid,
+          supportExpiresAt: expiry, supportExpired: data.session.platformOverride && !supportValid,
+        });
+      })
       .catch(() => { if (active) setVerified({ slug, uid, allowed: false, supportExpiresAt: null }); });
     return () => { active = false; };
   }, [user, slug]);
+
+  // Backend authorization checks every request, while this timer also unmounts
+  // already-rendered sensitive content when temporary support expires.
+  useEffect(() => {
+    if (!verified?.allowed || !verified.supportExpiresAt || verified.uid !== user?.uid || verified.slug !== slug) return;
+    const expiresAt = Date.parse(verified.supportExpiresAt);
+    const timer = window.setTimeout(() => {
+      setVerified((current) => current?.uid === verified.uid && current.slug === slug
+        && current.supportExpiresAt === verified.supportExpiresAt
+        ? { ...current, allowed: false, supportExpired: true } : current);
+    }, Math.max(0, expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [verified, user?.uid, slug]);
 
   if (loading) return <div className="loading-block">Validando acesso…</div>;
   if (!user) return <Navigate to={tenantPanelPath(slug, 'login')} replace />;
   if (!verified || verified.slug !== slug || verified.uid !== user.uid) return <div className="loading-block">Confirmando acesso à banca…</div>;
   if (!verified.allowed) {
     return <div className="page-wrap empty-state" role="alert">
-      <span className="eyebrow">ACESSO NÃO AUTORIZADO</span>
-      <h1>Esta conta não pertence a esta banca.</h1>
-      <p>Trocar o slug ou abrir um link de outra banca não concede acesso.</p>
+      <span className="eyebrow">{verified.supportExpired ? 'SUPORTE ENCERRADO' : 'ACESSO NÃO AUTORIZADO'}</span>
+      <h1>{verified.supportExpired ? 'O acesso temporário de suporte terminou.' : 'Esta conta não pertence a esta banca.'}</h1>
+      <p>{verified.supportExpired
+        ? 'Solicite uma nova autorização temporária pelo painel da plataforma, se ainda precisar de suporte.'
+        : 'Trocar o slug ou abrir um link de outra banca não concede acesso.'}</p>
       <Link className="button button--secondary" to={tenantPath(slug)}>Voltar ao site</Link>
     </div>;
   }
