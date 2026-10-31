@@ -117,7 +117,9 @@ function TenantAdminGate() {
 function PlatformGate() {
   const { user, loading } = useAdminAuth();
   if (loading) return <div className="loading-block">Validando acesso…</div>;
-  return user ? <Outlet /> : <Navigate to="/admin/login" replace />;
+  // Remount every platform view when the Firebase identity changes so that
+  // tenant lists and audit records from the previous owner are not retained.
+  return user ? <Outlet key={user.uid} /> : <Navigate to="/admin/login" replace />;
 }
 
 function LegacyRedirect() {
