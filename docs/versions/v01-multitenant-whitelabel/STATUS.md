@@ -59,6 +59,8 @@ Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 - Testes cobrem sucesso, ausência/invalidade de UID, slug existente (com e sem reserva), falha de commit sem estado parcial e repetição do mesmo slug.
 - **Limite operacional:** o Worker verifica o formato do UID, mas **não** comprova que ele já existe no Firebase Auth nem que o titular aceitou o convite; contas/consentimento reais devem ser verificados em homologação.
 - Novas bancas não são criadas em produção por esta alteração. Dados preexistentes e migração da Ana Maria continuam preservados.
+- Painel do Platform Owner descarta consultas de memberships e concessões de suporte de seleções de tenant anteriores, inclusive quando o servidor responde fora de ordem; testes com respostas atrasadas de A e B.
+- Ações de alteração de usuários/suporte ficam indisponíveis enquanto os acessos do tenant selecionado são carregados, sem impedir alternar de banca.
 
 ## Evidências automatizadas (sem acesso a dados reais)
 - testes de integração de autenticação Firebase assinada e isolamento A × B;
