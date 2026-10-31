@@ -17,6 +17,8 @@ vi.mock('../../src/infra/browser/api-client', () => ({
   jsonBody: (value: unknown) => ({ method: 'POST', body: JSON.stringify(value) }),
 }));
 vi.mock('../../src/infra/firebase/auth', () => ({ logoutAdmin: vi.fn() }));
+// Membership tests exercise the access-management UI; audit has its own suite.
+vi.mock('../../src/pages/platform/PlatformAuditSection', () => ({ PlatformAuditSection: () => null }));
 
 describe('Platform Owner membership administration', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
