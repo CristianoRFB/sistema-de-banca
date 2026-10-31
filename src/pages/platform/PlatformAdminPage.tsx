@@ -44,6 +44,7 @@ export function PlatformAdminPage() {
   const [slug, setSlug] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [memberships, setMemberships] = useState<PlatformMembership[]>([]);
+  const [membershipNextCursor, setMembershipNextCursor] = useState<string | null>(null);
   const [membershipUid, setMembershipUid] = useState('');
   const [membershipRole, setMembershipRole] = useState<'TENANT_OWNER' | 'STAFF' | 'ADMIN' | 'OPERADOR'>('TENANT_OWNER');
   const [supportGrant, setSupportGrant] = useState<PlatformSupportGrant | null>(null);
@@ -119,23 +120,34 @@ export function PlatformAdminPage() {
     }
   }
 
-  async function loadMemberships(tenantId: string) {
-    if (!user || !tenantId) return;
+  async function loadMemberships(tenantId: string, cursor: string | null = null) {
+    if (!user || !tenantId || working) return;
     setWorking(true);
     setError('');
+    if (!cursor) {
+      // Clear the previous bank immediately; a failed request must never leave
+      // membership actions for a different bank on screen.
+      setSelectedTenantId(tenantId);
+      setMemberships([]);
+      setMembershipNextCursor(null);
+      setSupportGrant(null);
+    }
     try {
       const token = await user.getIdToken();
-      const result = await apiRequest<{ memberships: PlatformMembership[] }>(
-        `/platform/tenants/${encodeURIComponent(tenantId)}/memberships`,
+      const params = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+      const result = await apiRequest<{ memberships: PlatformMembership[]; page?: { nextCursor: string | null } }>(
+        `/platform/tenants/${encodeURIComponent(tenantId)}/memberships${params}`,
         { headers: authHeaders(token) },
       );
-      setSelectedTenantId(tenantId);
-      setMemberships(result.memberships);
-      const supportResult = await apiRequest<{ grant: PlatformSupportGrant }>(
-        `/platform/tenants/${encodeURIComponent(tenantId)}/support`,
-        { headers: authHeaders(token) },
-      );
-      setSupportGrant(supportResult.grant);
+      setMemberships((current) => cursor ? [...current, ...result.memberships] : result.memberships);
+      setMembershipNextCursor(result.page?.nextCursor ?? null);
+      if (!cursor) {
+        const supportResult = await apiRequest<{ grant: PlatformSupportGrant }>(
+          `/platform/tenants/${encodeURIComponent(tenantId)}/support`,
+          { headers: authHeaders(token) },
+        );
+        setSupportGrant(supportResult.grant);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os acessos.');
     } finally {
@@ -355,8 +367,16 @@ export function PlatformAdminPage() {
                 </Button>
               </article>
             ))}
-            {!memberships.length && <p className="muted-copy">Nenhum acesso cadastrado neste tenant.</p>}
+            {!memberships.length && !working && !error && <p className="muted-copy">Nenhum acesso cadastrado neste tenant.</p>}
           </div>
+          {membershipNextCursor && (
+            <div className="button-row">
+              <Button type="button" variant="secondary" disabled={working}
+                onClick={() => void loadMemberships(selectedTenantId, membershipNextCursor)}>
+                {working ? 'Carregando…' : 'Carregar mais acessos'}
+              </Button>
+            </div>
+          )}
         </section>
       )}
     </main>
