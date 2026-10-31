@@ -73,6 +73,7 @@ export function PlatformAuditSection({ tenants }: {
     setTenantId(value);
     setEvents([]);
     setNextCursor(null);
+    setLoadingMore(false);
     setError('');
     setLoading(true);
   }
@@ -81,6 +82,7 @@ export function PlatformAuditSection({ tenants }: {
     generation.current += 1;
     setEvents([]);
     setNextCursor(null);
+    setLoadingMore(false);
     setError('');
     setLoading(true);
     setRefresh((value) => value + 1);
