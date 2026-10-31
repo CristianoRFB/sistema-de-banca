@@ -66,6 +66,27 @@ describe('admin tenant authorization gate', () => {
     });
   });
 
+  it('unmounts a temporary support panel after its authorization expires', async () => {
+    mocks.apiRequest.mockResolvedValue({
+      session: { platformOverride: true, supportExpiresAt: new Date(Date.now() + 400).toISOString() },
+    });
+    render(<MemoryRouter initialEntries={['/banca-a/painel']}><AppRoutes /></MemoryRouter>);
+    await screen.findByTestId('private-admin-panel');
+    await waitFor(() => {
+      expect(screen.getByText('O acesso temporário de suporte terminou.')).toBeInTheDocument();
+    }, { timeout: 3000 });
+    expect(screen.queryByTestId('private-admin-panel')).not.toBeInTheDocument();
+  });
+
+  it('rejects malformed support expiry even when the backend claims platform override', async () => {
+    mocks.apiRequest.mockResolvedValue({
+      session: { platformOverride: true, supportExpiresAt: 'not-a-date' },
+    });
+    render(<MemoryRouter initialEntries={['/banca-a/painel']}><AppRoutes /></MemoryRouter>);
+    await screen.findByText('O acesso temporário de suporte terminou.');
+    expect(screen.queryByTestId('private-admin-panel')).not.toBeInTheDocument();
+  });
+
   it('refuses invalid public tenant slugs without making a backend request', async () => {
     render(<MemoryRouter initialEntries={['/@invalid']}><AppRoutes /></MemoryRouter>);
     expect(screen.getByRole('alert')).toHaveTextContent('Endereço de banca inválido.');
