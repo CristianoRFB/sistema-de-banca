@@ -38,6 +38,7 @@ Consultar `TESTING.md` para comandos e escopo das evidências automatizadas.
 - UI permite carregar mais memberships sem perder as anteriores e limpa a lista ao mudar de tenant, inclusive se uma consulta falhar.
 - Link de suporte não utiliza mais o tenant padrão quando o tenant selecionado não é encontrado.
 - Branding do AdminShell só é aplicado se o bootstrap corresponder ao slug ativo e estiver habilitado, sem exibir visual de outra banca durante navegação.
+- Suporte temporário desmonta o painel e bloqueia o conteúdo já renderizado quando a concessão expira; expiração ausente ou inválida não concede acesso, mesmo com flag de override.
 - Testes de regressão cobrem 255 memberships, escopo de cursor e limites, paginação na UI, troca de banca com falha e branding administrativo divergente.
 - Os resultados desta rodada dependem do CI verde no último SHA; commits anteriores não provam o estado mais recente.
 
