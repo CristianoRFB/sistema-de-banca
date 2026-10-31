@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { apiRequest, jsonBody } from '../../infra/browser/api-client';
 import { logoutAdmin } from '../../infra/firebase/auth';
+import { PlatformAuditSection } from './PlatformAuditSection';
 
 interface PlatformMembership {
   uid: string;
@@ -379,6 +380,7 @@ export function PlatformAdminPage() {
           )}
         </section>
       )}
+      <PlatformAuditSection tenants={tenants} />
     </main>
   );
 }
