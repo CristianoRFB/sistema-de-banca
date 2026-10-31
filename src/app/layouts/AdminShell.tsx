@@ -32,12 +32,15 @@ export function AdminShell({ supportExpiresAt = null }: { supportExpiresAt?: str
     return () => { active = false; };
   }, [slug]);
 
-  const tenantName = tenant?.name || slug;
+  // The shell is reused during client-side tenant navigation. Never display
+  // branding loaded for a different or disabled bank, even for one frame.
+  const verifiedTenant = tenant?.slug === slug && tenant.active ? tenant : null;
+  const tenantName = verifiedTenant?.name || slug;
   const tenantStyle = {
-    '--lime': tenant?.branding.primaryColor ?? undefined,
-    '--orange': tenant?.branding.accentColor ?? undefined,
-    '--paper': tenant?.branding.backgroundColor ?? undefined,
-    '--ink': tenant?.branding.textColor ?? undefined,
+    '--lime': verifiedTenant?.branding.primaryColor ?? undefined,
+    '--orange': verifiedTenant?.branding.accentColor ?? undefined,
+    '--paper': verifiedTenant?.branding.backgroundColor ?? undefined,
+    '--ink': verifiedTenant?.branding.textColor ?? undefined,
   } as CSSProperties;
 
   async function logout() {
