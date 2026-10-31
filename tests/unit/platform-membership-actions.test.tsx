@@ -74,6 +74,67 @@ describe('Platform Owner membership administration', () => {
     );
   });
 
+  it('loads additional membership pages and retains earlier access rows', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path === '/platform/tenants') return {
+        tenants: [{ id: 'tenant-a', slug: 'banca-a', name: 'Banca A', active: true }],
+      };
+      if (path === '/platform/tenants/tenant-a/memberships') return {
+        memberships: [{ uid: 'user-first', role: 'STAFF', active: true }],
+        page: { nextCursor: 'user-first' },
+      };
+      if (path === '/platform/tenants/tenant-a/memberships?cursor=user-first') return {
+        memberships: [{ uid: 'user-second', role: 'ADMIN', active: false }],
+        page: { nextCursor: null },
+      };
+      if (path === '/platform/tenants/tenant-a/support') {
+        return { grant: { active: false, expiresAt: null, reason: null } };
+      }
+      throw new Error('Unexpected API request: ' + path);
+    });
+    const user = userEvent.setup();
+    render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: 'Acessos' }));
+    expect(await screen.findByText('user-first')).toBeInTheDocument();
+    const more = await screen.findByRole('button', { name: 'Carregar mais acessos' });
+    await waitFor(() => expect(more).toBeEnabled());
+    await user.click(more);
+    await screen.findByText('user-second');
+    expect(screen.getByText('user-first')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Carregar mais acessos' })).not.toBeInTheDocument();
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/platform/tenants/tenant-a/memberships?cursor=user-first',
+      expect.objectContaining({ headers: { Authorization: 'Bearer test-token' } }),
+    );
+  });
+
+  it('clears tenant A access records before loading another tenant that fails', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path === '/platform/tenants') return { tenants: [
+        { id: 'tenant-a', slug: 'banca-a', name: 'Banca A', active: true },
+        { id: 'tenant-b', slug: 'banca-b', name: 'Banca B', active: true },
+      ] };
+      if (path === '/platform/tenants/tenant-a/memberships') return {
+        memberships: [{ uid: 'only-in-a', role: 'STAFF', active: true }],
+      };
+      if (path === '/platform/tenants/tenant-a/support') {
+        return { grant: { active: false, expiresAt: null, reason: null } };
+      }
+      if (path === '/platform/tenants/tenant-b/memberships') throw new Error('Tenant B unavailable');
+      throw new Error('Unexpected API request: ' + path);
+    });
+    const user = userEvent.setup();
+    render(<MemoryRouter><PlatformAdminPage /></MemoryRouter>);
+    const accessButtons = await screen.findAllByRole('button', { name: 'Acessos' });
+    await user.click(accessButtons[0]);
+    await screen.findByText('only-in-a');
+    await waitFor(() => expect(accessButtons[1]).toBeEnabled());
+    await user.click(accessButtons[1]);
+    await screen.findByRole('alert');
+    expect(screen.queryByText('only-in-a')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Tenant B unavailable');
+  });
+
   it('does not revoke a membership when cancellation is selected', async () => {
     mocks.confirm.mockReturnValueOnce(false);
     const user = userEvent.setup();
